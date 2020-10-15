@@ -1,0 +1,10 @@
+*.swp
+*.kra
+*.*~
+*.lib
+*.obj
+*.pdb
+*.zip
+*.rdbg
+
+build/
