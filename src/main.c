@@ -14,7 +14,7 @@ typedef struct {
     VkDevice* device;
 } cleanup_t;
 
-void check_error(bool is_error, const char* error_header, const char* error_text, cleanup_t* cleanup) {
+bool check_error(bool is_error, const char* error_header, const char* error_text, cleanup_t* cleanup) {
     if (is_error) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, error_text);
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, error_header, error_text, NULL);
@@ -25,8 +25,9 @@ void check_error(bool is_error, const char* error_header, const char* error_text
         if (cleanup->window)
             SDL_DestroyWindow(cleanup->window);
         SDL_Quit();
-        exit(-1);
+        return true;
     }
+    return false;
 }
 
 int main(int argc, char** argv) {
@@ -34,11 +35,13 @@ int main(int argc, char** argv) {
     cleanup_t cleanup = { NULL, NULL, NULL };
 
     int init_success = SDL_Init(SDL_INIT_VIDEO);
-    check_error(init_success != 0, "Error in SDL Initialisation.", SDL_GetError(), &cleanup);
+    if (check_error(init_success != 0, "Error in SDL Initialisation.", SDL_GetError(), &cleanup))
+        return -1;
     SDL_Window* window;
     window = SDL_CreateWindow("Easel", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                               1024, 768, SDL_WINDOW_VULKAN);
-    check_error(window == NULL, "Error in SDL Window Creation.", SDL_GetError(), &cleanup);
+    if(check_error(window == NULL, "Error in SDL Window Creation.", SDL_GetError(), &cleanup))
+        return -2;
     cleanup.window = window;
 
     VkInstance instance;
@@ -58,10 +61,12 @@ int main(int argc, char** argv) {
     validation_layers[0] =  "VK_LAYER_KHRONOS_validation";
     uint32_t layer_count;
     result = vkEnumerateInstanceLayerProperties(&layer_count, NULL);
-    check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "There was an error setting up Vulkan. Could not get instance layer properties", &cleanup);
+    if(check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "There was an error setting up Vulkan. Could not get instance layer properties", &cleanup))
+        return -3;
     VkLayerProperties* layer_properties = (VkLayerProperties*) malloc(layer_count * sizeof(VkLayerProperties));
     result = vkEnumerateInstanceLayerProperties(&layer_count, layer_properties);
-    check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "There was an error setting up Vulkan. Could not get instance layer properties", &cleanup);
+    if(check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "There was an error setting up Vulkan. Could not get instance layer properties", &cleanup))
+        return -3;
     bool validation_available = false;
     for (int i=0; i<layer_count; i++) {
         for (int j=0; j<validation_layers_count; j++) {
@@ -73,7 +78,8 @@ int main(int argc, char** argv) {
         if (validation_available)
             break;
     }
-    check_error(!validation_available, "Error in Vulkan Setup.", "Validation layer not available.", window, NULL);
+    if(check_error(!validation_available, "Error in Vulkan Setup.", "Validation layer not available.", window, NULL))
+        return -3;
 #endif
 
     VkInstanceCreateInfo create_info;
@@ -84,16 +90,20 @@ int main(int argc, char** argv) {
     const char** required_extensions;
     SDL_bool get_extensions;
     get_extensions = SDL_Vulkan_GetInstanceExtensions(window, &required_extensions_count, NULL);
-    check_error(!get_extensions, "Error in getting Required Vulkan Extensions", SDL_GetError(), &cleanup);
+    if(check_error(!get_extensions, "Error in getting Required Vulkan Extensions", SDL_GetError(), &cleanup))
+        return -3;
     required_extensions = (char**) malloc(required_extensions_count * sizeof(char*));
     get_extensions = SDL_Vulkan_GetInstanceExtensions(window, &required_extensions_count, required_extensions);
-    check_error(!get_extensions, "Error in getting Required Vulkan Extensions", SDL_GetError(), &cleanup);
+    if(check_error(!get_extensions, "Error in getting Required Vulkan Extensions", SDL_GetError(), &cleanup))
+        return -3;
     uint32_t available_extensions_count;
     result = vkEnumerateInstanceExtensionProperties(NULL, &available_extensions_count, NULL);
-    check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get available instance extensions.", &cleanup);
+    if(check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get available instance extensions.", &cleanup))
+        return -3;
     VkExtensionProperties* available_extensions = (VkExtensionProperties*) malloc(available_extensions_count * sizeof(VkExtensionProperties));
     result = vkEnumerateInstanceExtensionProperties(NULL, &available_extensions_count, available_extensions);
-    check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get available instance extensions.", &cleanup);
+    if(check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get available instance extensions.", &cleanup))
+        return -3;
     uint32_t required_extensions_available = 0;
     for (int i=0; i<available_extensions_count; i++) {
         for (int j=0; j<required_extensions_count; j++) {
@@ -103,7 +113,8 @@ int main(int argc, char** argv) {
             }
         }
     }
-    check_error(required_extensions_available != required_extensions_count, "Error in Vulkan Setup.", "The required extensions are not available.", &cleanup);
+    if(check_error(required_extensions_available != required_extensions_count, "Error in Vulkan Setup.", "The required extensions are not available.", &cleanup))
+        return -3;
     create_info.enabledExtensionCount = required_extensions_count;
     create_info.ppEnabledExtensionNames = required_extensions;
     create_info.flags = 0;
@@ -115,18 +126,22 @@ int main(int argc, char** argv) {
 #endif
     SDL_Log("Creating Vulkan Instance\n");
     result = vkCreateInstance(&create_info, NULL, &instance);
-    check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not create vulkan instance.", &cleanup);
+    if(check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not create vulkan instance.", &cleanup))
+        return -3;
     cleanup.instance = &instance;
 
     VkPhysicalDevice physical_device = VK_NULL_HANDLE;
     uint32_t device_count = 0;
     result = vkEnumeratePhysicalDevices(instance, &device_count, NULL);
-    check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get physical devices.", &cleanup);
-    check_error(device_count == 0, "Error in Vulkan Setup.", "Could not find a GPU with Vulkan support.", &cleanup);
+    if(check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get physical devices.", &cleanup))
+        return -3;
+    if(check_error(device_count == 0, "Error in Vulkan Setup.", "Could not find a GPU with Vulkan support.", &cleanup))
+        return -3;
     SDL_Log("Found %i Vulkan Devices\n", device_count);
     VkPhysicalDevice* devices = (VkPhysicalDevice*) malloc(device_count * sizeof(VkPhysicalDevice));
     result = vkEnumeratePhysicalDevices(instance, &device_count, devices);
-    check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get physical devices.", &cleanup);
+    if(check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get physical devices.", &cleanup))
+        return -3;
     if (device_count == 1)
         // TODO (16 Oct 2020 sam): Need to check if device is suitable
         // and has all required queue families etc.
@@ -135,7 +150,8 @@ int main(int argc, char** argv) {
         // TODO (16 Oct 2020 sam): Implement selection of best device
         // Would need to check queue families available etc.
     }
-    check_error(physical_device == VK_NULL_HANDLE, "Error in Vulkan Setup.", "Could not find a suitable GPU.", &cleanup);
+    if(check_error(physical_device == VK_NULL_HANDLE, "Error in Vulkan Setup.", "Could not find a suitable GPU.", &cleanup))
+        return -3;
     uint32_t queue_family_count = 0;
     // This method does not return a VkResult
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, NULL);
@@ -150,7 +166,8 @@ int main(int argc, char** argv) {
         }
     }
     SDL_Log("Graphics Queue Family is %i\n", graphics_queue_family);
-    check_error(graphics_queue_family < 0, "Error in Vulkan Setup.", "Could not find queue family with graphics", &cleanup);
+    if(check_error(graphics_queue_family < 0, "Error in Vulkan Setup.", "Could not find queue family with graphics", &cleanup))
+        return -3;
 
     VkDevice device;
     VkDeviceQueueCreateInfo queue_create_info;
@@ -179,7 +196,8 @@ int main(int argc, char** argv) {
     device_create_info.pQueueCreateInfos = &queue_create_info;
     device_create_info.pEnabledFeatures = &device_features;
     result = vkCreateDevice(physical_device, &device_create_info, NULL, &device);
-    check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not create device.", &cleanup);
+    if(check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not create device.", &cleanup))
+        return -3;
     cleanup.device = &device;
     VkQueue graphics_queue;
     uint32_t graphics_queue_index = 0;
