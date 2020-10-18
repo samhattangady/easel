@@ -7,6 +7,7 @@
 #include <string.h>
 
 #define DEBUG_BUILD true
+#define MAX_FRAMES_IN_FLIGHT 2
 
 typedef struct {
     SDL_Window* window;
@@ -23,8 +24,9 @@ typedef struct {
     VkPipeline* graphics_pipeline;
     VkFramebuffer* swapchain_framebuffers;
     VkCommandPool* command_pool;
-    VkSemaphore* image_acquired_semaphore;
-    VkSemaphore* render_finished_semaphore;
+    VkSemaphore* image_available_semaphores;
+    VkSemaphore* render_finished_semaphores;
+    VkFence* in_flight_fences;
 } cleanup_t;
 
 bool check_error(bool is_error, const char* error_header, const char* error_text, cleanup_t* cleanup) {
@@ -33,10 +35,15 @@ bool check_error(bool is_error, const char* error_header, const char* error_text
     if (is_error) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, error_text);
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, error_header, error_text, NULL);
-        if (cleanup->image_acquired_semaphore)
-            vkDestroySemaphore(*cleanup->device, *cleanup->image_acquired_semaphore, NULL);
-        if (cleanup->render_finished_semaphore)
-            vkDestroySemaphore(*cleanup->device, *cleanup->render_finished_semaphore, NULL);
+        if (cleanup->in_flight_fences)
+            for (int i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
+                vkDestroyFence(*cleanup->device, cleanup->in_flight_fences[i], NULL);
+        if (cleanup->image_available_semaphores)
+            for (int i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
+                vkDestroySemaphore(*cleanup->device, cleanup->image_available_semaphores[i], NULL);
+        if (cleanup->render_finished_semaphores)
+            for (int i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
+                vkDestroySemaphore(*cleanup->device, cleanup->render_finished_semaphores[i], NULL);
         if (cleanup->command_pool)
             vkDestroyCommandPool(*cleanup->device, *cleanup->command_pool, NULL);
         if (cleanup->swapchain_framebuffers) {
@@ -736,24 +743,39 @@ int main(int argc, char** argv) {
             return -9;
     }
 
-    VkSemaphore image_acquired_semaphore;
-    VkSemaphore render_finished_semaphore;
+    SDL_Log("Creating Synchronisation Elements\n");
+    VkSemaphore image_available_semaphores[MAX_FRAMES_IN_FLIGHT];
+    VkSemaphore render_finished_semaphores[MAX_FRAMES_IN_FLIGHT];
     VkSemaphoreCreateInfo semaphore_create_info;
     semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     semaphore_create_info.pNext = NULL;
     semaphore_create_info.flags = 0;
-    result = vkCreateSemaphore(device, &semaphore_create_info, NULL, &image_acquired_semaphore);
-    if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not create image semaphore", &cleanup))
-        return -9;
-    cleanup.image_acquired_semaphore = &image_acquired_semaphore;
-    result = vkCreateSemaphore(device, &semaphore_create_info, NULL, &render_finished_semaphore);
-    if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not create image semaphore", &cleanup))
-        return -9;
-    cleanup.render_finished_semaphore = &render_finished_semaphore;
+    VkFence in_flight_fences[MAX_FRAMES_IN_FLIGHT];
+    VkFence* images_in_flight = (VkFence*) calloc(swapchain_image_count, sizeof(VkFence));
+    VkFenceCreateInfo fence_create_info;
+    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_create_info.pNext = NULL;
+    fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    for (int i=0; i<MAX_FRAMES_IN_FLIGHT; i++) {
+        result = vkCreateSemaphore(device, &semaphore_create_info, NULL, &image_available_semaphores[i]);
+        if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not create image semaphore", &cleanup))
+            return -9;
+        result = vkCreateSemaphore(device, &semaphore_create_info, NULL, &render_finished_semaphores[i]);
+        if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not create image semaphore", &cleanup))
+            return -9;
+        result = vkCreateFence(device, &fence_create_info, NULL, &in_flight_fences[i]);
+        if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not create fence", &cleanup))
+            return -9;
+    }
+    cleanup.image_available_semaphores = image_available_semaphores;
+    cleanup.render_finished_semaphores = render_finished_semaphores;
+    cleanup.in_flight_fences = in_flight_fences;
 
     SDL_Log("Running Event Loop\n");
     SDL_Event e;
+    uint32_t frame_index = 0;
     while (true) {
+        vkWaitForFences(device, 1, &in_flight_fences[frame_index], VK_TRUE, UINT64_MAX);
         SDL_PollEvent(&e);
         if (e.type == SDL_QUIT) {
             SDL_Log("Program quit after %i ticks", e.quit.timestamp);
@@ -761,12 +783,15 @@ int main(int argc, char** argv) {
         } 
         // draw frame.
         uint32_t image_index;
-        result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, image_acquired_semaphore, VK_NULL_HANDLE, &image_index);
+        result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, image_available_semaphores[frame_index], VK_NULL_HANDLE, &image_index);
         if (check_error(result != VK_SUCCESS, "Error in Rendering.", "Could not acquire next image", &cleanup))
             return -10;
-        VkSemaphore wait_semaphores[] = { image_acquired_semaphore };
+        if (images_in_flight[image_index] != VK_NULL_HANDLE)
+            vkWaitForFences(device, 1, &images_in_flight[image_index], VK_TRUE, UINT64_MAX);
+        images_in_flight[image_index] = in_flight_fences[frame_index];
+        VkSemaphore wait_semaphores[] = { image_available_semaphores[frame_index] };
         VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-        VkSemaphore signal_semaphores[] = { render_finished_semaphore };
+        VkSemaphore signal_semaphores[] = { render_finished_semaphores[frame_index] };
         VkSubmitInfo submit_info;
         submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submit_info.pNext = NULL;
@@ -777,7 +802,8 @@ int main(int argc, char** argv) {
         submit_info.pCommandBuffers = &command_buffers[image_index];
         submit_info.signalSemaphoreCount = 1;
         submit_info.pSignalSemaphores = signal_semaphores;
-        result = vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
+        vkResetFences(device, 1, &in_flight_fences[frame_index]);
+        result = vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fences[frame_index]);
         if (check_error(result != VK_SUCCESS, "Error in Rendering.", "Could not submit to graphics queue", &cleanup))
             return -10;
         VkSwapchainKHR swapchains[] = { swapchain };
@@ -793,12 +819,16 @@ int main(int argc, char** argv) {
         result = vkQueuePresentKHR(presentation_queue, &present_info);
         if (check_error(result != VK_SUCCESS, "Error in Rendering.", "Could not present queue", &cleanup))
             return -10;
-        vkQueueWaitIdle(presentation_queue);
-        vkDeviceWaitIdle(device);
+        frame_index = (frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
-    vkDestroySemaphore(device, image_acquired_semaphore, NULL);
-    vkDestroySemaphore(device, render_finished_semaphore, NULL);
+    vkQueueWaitIdle(presentation_queue);
+    vkDeviceWaitIdle(device);
+    for (int i=0; i<MAX_FRAMES_IN_FLIGHT; i++) {
+        vkDestroySemaphore(device, image_available_semaphores[i], NULL);
+        vkDestroySemaphore(device, render_finished_semaphores[i], NULL);
+        vkDestroyFence(device, in_flight_fences[i], NULL);
+    }
     vkDestroyCommandPool(device, command_pool, NULL);
     for (int i=0; i<swapchain_image_count; i++)
         vkDestroyFramebuffer(device, swapchain_framebuffers[i], NULL); 
