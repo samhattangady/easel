@@ -23,12 +23,20 @@ typedef struct {
     VkPipeline* graphics_pipeline;
     VkFramebuffer* swapchain_framebuffers;
     VkCommandPool* command_pool;
+    VkSemaphore* image_acquired_semaphore;
+    VkSemaphore* render_finished_semaphore;
 } cleanup_t;
 
 bool check_error(bool is_error, const char* error_header, const char* error_text, cleanup_t* cleanup) {
+    // TODO (18 Oct 2020 sam): Try converting this to some short-circuited check, so that function
+    // is not called unless necessary.
     if (is_error) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, error_text);
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, error_header, error_text, NULL);
+        if (cleanup->image_acquired_semaphore)
+            vkDestroySemaphore(*cleanup->device, *cleanup->image_acquired_semaphore, NULL);
+        if (cleanup->render_finished_semaphore)
+            vkDestroySemaphore(*cleanup->device, *cleanup->render_finished_semaphore, NULL);
         if (cleanup->command_pool)
             vkDestroyCommandPool(*cleanup->device, *cleanup->command_pool, NULL);
         if (cleanup->swapchain_framebuffers) {
@@ -468,6 +476,14 @@ int main(int argc, char** argv) {
     subpass.preserveAttachmentCount = 0;
     subpass.pPreserveAttachments = NULL;
     VkRenderPass render_pass;
+    VkSubpassDependency subpass_dependency;
+    subpass_dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    subpass_dependency.dstSubpass = 0;
+    subpass_dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    subpass_dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    subpass_dependency.srcAccessMask = 0;
+    subpass_dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    subpass_dependency.dependencyFlags= 0;
     VkRenderPassCreateInfo render_pass_create_info;
     render_pass_create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     render_pass_create_info.pNext = NULL;
@@ -476,8 +492,8 @@ int main(int argc, char** argv) {
     render_pass_create_info.pAttachments = &color_attachment;
     render_pass_create_info.subpassCount = 1;
     render_pass_create_info.pSubpasses = &subpass;
-    render_pass_create_info.dependencyCount = 0;
-    render_pass_create_info.pDependencies = NULL;
+    render_pass_create_info.dependencyCount = 1;
+    render_pass_create_info.pDependencies = &subpass_dependency;
     result = vkCreateRenderPass(device, &render_pass_create_info, NULL, &render_pass);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not create render pass.", &cleanup))
         return -7;
@@ -720,6 +736,21 @@ int main(int argc, char** argv) {
             return -9;
     }
 
+    VkSemaphore image_acquired_semaphore;
+    VkSemaphore render_finished_semaphore;
+    VkSemaphoreCreateInfo semaphore_create_info;
+    semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    semaphore_create_info.pNext = NULL;
+    semaphore_create_info.flags = 0;
+    result = vkCreateSemaphore(device, &semaphore_create_info, NULL, &image_acquired_semaphore);
+    if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not create image semaphore", &cleanup))
+        return -9;
+    cleanup.image_acquired_semaphore = &image_acquired_semaphore;
+    result = vkCreateSemaphore(device, &semaphore_create_info, NULL, &render_finished_semaphore);
+    if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not create image semaphore", &cleanup))
+        return -9;
+    cleanup.render_finished_semaphore = &render_finished_semaphore;
+
     SDL_Log("Running Event Loop\n");
     SDL_Event e;
     while (true) {
@@ -728,8 +759,46 @@ int main(int argc, char** argv) {
             SDL_Log("Program quit after %i ticks", e.quit.timestamp);
             break;
         } 
+        // draw frame.
+        uint32_t image_index;
+        result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, image_acquired_semaphore, VK_NULL_HANDLE, &image_index);
+        if (check_error(result != VK_SUCCESS, "Error in Rendering.", "Could not acquire next image", &cleanup))
+            return -10;
+        VkSemaphore wait_semaphores[] = { image_acquired_semaphore };
+        VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+        VkSemaphore signal_semaphores[] = { render_finished_semaphore };
+        VkSubmitInfo submit_info;
+        submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit_info.pNext = NULL;
+        submit_info.waitSemaphoreCount = 1;
+        submit_info.pWaitSemaphores = wait_semaphores;
+        submit_info.pWaitDstStageMask = wait_stages;
+        submit_info.commandBufferCount = 1;
+        submit_info.pCommandBuffers = &command_buffers[image_index];
+        submit_info.signalSemaphoreCount = 1;
+        submit_info.pSignalSemaphores = signal_semaphores;
+        result = vkQueueSubmit(graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
+        if (check_error(result != VK_SUCCESS, "Error in Rendering.", "Could not submit to graphics queue", &cleanup))
+            return -10;
+        VkSwapchainKHR swapchains[] = { swapchain };
+        VkPresentInfoKHR present_info;
+        present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        present_info.pNext = NULL;
+        present_info.waitSemaphoreCount = 1;
+        present_info.pWaitSemaphores = signal_semaphores;
+        present_info.swapchainCount = 1;
+        present_info.pSwapchains = swapchains;
+        present_info.pImageIndices = &image_index;
+        present_info.pResults = NULL;
+        result = vkQueuePresentKHR(presentation_queue, &present_info);
+        if (check_error(result != VK_SUCCESS, "Error in Rendering.", "Could not present queue", &cleanup))
+            return -10;
+        vkQueueWaitIdle(presentation_queue);
+        vkDeviceWaitIdle(device);
     }
 
+    vkDestroySemaphore(device, image_acquired_semaphore, NULL);
+    vkDestroySemaphore(device, render_finished_semaphore, NULL);
     vkDestroyCommandPool(device, command_pool, NULL);
     for (int i=0; i<swapchain_image_count; i++)
         vkDestroyFramebuffer(device, swapchain_framebuffers[i], NULL); 
