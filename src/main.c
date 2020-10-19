@@ -87,7 +87,7 @@ bool check_error(bool is_error, const char* error_header, const char* error_text
 
 int read_shader_file(const char* filename, uint32_t** buffer) {
     FILE* shader_file;
-    fopen_s(&shader_file, filename, "rb");
+    shader_file = fopen(filename, "rb");
     int file_size;
     size_t read_size;
     int result;
