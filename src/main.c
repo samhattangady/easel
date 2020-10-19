@@ -85,37 +85,32 @@ bool check_error(bool is_error, const char* error_header, const char* error_text
     return false;
 }
 
-int read_shader_file(const char* filename, uint32_t** buffer) {
-    FILE* shader_file;
-    shader_file = fopen(filename, "rb");
-    int file_size;
+Sint64 read_shader_file(const char* filename, uint32_t** buffer) {
+    SDL_RWops* shader_file;
+    shader_file = SDL_RWFromFile(filename, "rb");
+    Sint64 file_size;
     size_t read_size;
-    int result;
+    Sint64 result;
     if (shader_file == NULL)
         return -1;
-    result = fseek(shader_file, 0, SEEK_END);
-    if (result != 0) {
-        fclose(shader_file);
+    file_size = SDL_RWseek(shader_file, 0, RW_SEEK_END);
+    if (file_size < 0) {
+        SDL_RWclose(shader_file);
         return -2;
     }
-    file_size = ftell(shader_file);
-    if (file_size < 0) {
-        fclose(shader_file);
-        return -3;
-    }
-    result = fseek(shader_file, 0, SEEK_SET);
-    if (result != 0) {
-        fclose(shader_file);
+    result = SDL_RWseek(shader_file, 0, SEEK_SET);
+    if (result < 0) {
+        SDL_RWclose(shader_file);
         return -4;
     }
     uint32_t* temp_buffer = (uint32_t*) malloc(file_size * sizeof(uint32_t));
-    read_size = fread(temp_buffer, sizeof(uint32_t), file_size, shader_file);
-    if (read_size*sizeof(uint32_t) != file_size) {
+    read_size = SDL_RWread(shader_file, temp_buffer, sizeof(uint32_t), file_size);
+    if (read_size*sizeof(uint32_t) != (Sint64)file_size) {
         free(temp_buffer);
-        fclose(shader_file);
+        SDL_RWclose(shader_file);
         return -5;
     }
-    fclose(shader_file);
+    SDL_RWclose(shader_file);
     *buffer = temp_buffer;
     return file_size;
 }
@@ -522,7 +517,7 @@ int main(int argc, char** argv) {
 
     SDL_Log("Loading shaders\n");
     uint32_t* vertex_spirv;
-    int vertex_shader_length;
+    Sint64 vertex_shader_length;
     vertex_shader_length = read_shader_file("data/spirv/vertex.spv", &vertex_spirv);
     if (check_error(vertex_shader_length < 0, "Error in Vulkan Setup.", "Could not read vertex shader.", &cleanup))
         return -8;
@@ -538,7 +533,7 @@ int main(int argc, char** argv) {
         return -8;
     cleanup.vertex_shader_module = &vertex_shader_module;
     uint32_t* fragment_spirv;
-    int fragment_shader_length;
+    Sint64 fragment_shader_length;
     fragment_shader_length = read_shader_file("data/spirv/fragment.spv", &fragment_spirv);
     if (check_error(fragment_shader_length < 0, "Error in Vulkan Setup.", "Could not read fragment shader.", &cleanup))
         return -8;
