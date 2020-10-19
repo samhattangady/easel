@@ -1,12 +1,8 @@
 #include "SDL.h"
 #include "SDL_vulkan.h"
 #include <vulkan/vulkan.h>
-#include <stdio.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <string.h>
 
-#define DEBUG_BUILD true
+#define DEBUG_BUILD 1
 #define MAX_FRAMES_IN_FLIGHT 2
 
 typedef struct {
@@ -15,7 +11,7 @@ typedef struct {
     VkSurfaceKHR* surface;
     VkDevice* device;
     VkSwapchainKHR* swapchain;
-    uint32_t image_count;
+    Uint32 image_count;
     VkImageView* imageviews;
     VkShaderModule* vertex_shader_module;
     VkShaderModule* fragment_shader_module;
@@ -30,7 +26,7 @@ typedef struct {
     VkQueue* presentation_queue;
 } cleanup_t;
 
-bool check_error(bool is_error, const char* error_header, const char* error_text, cleanup_t* cleanup) {
+SDL_bool check_error(SDL_bool is_error, const char* error_header, const char* error_text, cleanup_t* cleanup) {
     // TODO (18 Oct 2020 sam): Try converting this to some short-circuited check, so that function
     // is not called unless necessary.
     if (is_error) {
@@ -39,18 +35,18 @@ bool check_error(bool is_error, const char* error_header, const char* error_text
         if (cleanup->presentation_queue)
             vkQueueWaitIdle(*cleanup->presentation_queue);
         if (cleanup->in_flight_fences)
-            for (uint32_t i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
+            for (Uint32 i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
                 vkDestroyFence(*cleanup->device, cleanup->in_flight_fences[i], NULL);
         if (cleanup->image_available_semaphores)
-            for (uint32_t i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
+            for (Uint32 i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
                 vkDestroySemaphore(*cleanup->device, cleanup->image_available_semaphores[i], NULL);
         if (cleanup->render_finished_semaphores)
-            for (uint32_t i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
+            for (Uint32 i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
                 vkDestroySemaphore(*cleanup->device, cleanup->render_finished_semaphores[i], NULL);
         if (cleanup->command_pool)
             vkDestroyCommandPool(*cleanup->device, *cleanup->command_pool, NULL);
         if (cleanup->swapchain_framebuffers) {
-            for (uint32_t i=0; i<cleanup->image_count; i++)
+            for (Uint32 i=0; i<cleanup->image_count; i++)
                 vkDestroyFramebuffer(*cleanup->device, cleanup->swapchain_framebuffers[i], NULL);
         }
         if (cleanup->graphics_pipeline)
@@ -64,7 +60,7 @@ bool check_error(bool is_error, const char* error_header, const char* error_text
         if (cleanup->fragment_shader_module)
             vkDestroyShaderModule(*cleanup->device, *cleanup->fragment_shader_module, NULL);
         if (cleanup->image_count > 0) {
-            for (uint32_t i=0; i<cleanup->image_count; i++)
+            for (Uint32 i=0; i<cleanup->image_count; i++)
                 vkDestroyImageView(*cleanup->device, cleanup->imageviews[i], NULL);
         }
         if (cleanup->swapchain)
@@ -80,12 +76,12 @@ bool check_error(bool is_error, const char* error_header, const char* error_text
         if (cleanup->window)
             SDL_DestroyWindow(cleanup->window);
         SDL_Quit();
-        return true;
+        return SDL_TRUE;
     }
-    return false;
+    return SDL_FALSE;
 }
 
-Sint64 read_shader_file(const char* filename, uint32_t** buffer) {
+Sint64 read_shader_file(const char* filename, Uint32** buffer) {
     SDL_RWops* shader_file;
     shader_file = SDL_RWFromFile(filename, "rb");
     Sint64 file_size;
@@ -98,15 +94,15 @@ Sint64 read_shader_file(const char* filename, uint32_t** buffer) {
         SDL_RWclose(shader_file);
         return -2;
     }
-    result = SDL_RWseek(shader_file, 0, SEEK_SET);
+    result = SDL_RWseek(shader_file, 0, RW_SEEK_SET);
     if (result < 0) {
         SDL_RWclose(shader_file);
         return -4;
     }
-    uint32_t* temp_buffer = (uint32_t*) malloc(file_size * sizeof(uint32_t));
-    read_size = SDL_RWread(shader_file, temp_buffer, sizeof(uint32_t), file_size);
-    if (read_size*sizeof(uint32_t) != (Sint64)file_size) {
-        free(temp_buffer);
+    Uint32* temp_buffer = (Uint32*) SDL_malloc(file_size * sizeof(Uint32));
+    read_size = SDL_RWread(shader_file, temp_buffer, sizeof(Uint32), file_size);
+    if ((Sint64)(read_size*sizeof(Uint32)) != file_size) {
+        SDL_free(temp_buffer);
         SDL_RWclose(shader_file);
         return -5;
     }
@@ -144,22 +140,22 @@ int main(int argc, char** argv) {
     app_info.apiVersion = VK_API_VERSION_1_0;
 
 #if DEBUG_BUILD
-    const uint32_t validation_layers_count = 1;
-    const char** validation_layers = (char**) malloc(validation_layers_count * sizeof(char*));
+    const Uint32 validation_layers_count = 1;
+    const char** validation_layers = (char**) SDL_malloc(validation_layers_count * sizeof(char*));
     validation_layers[0] =  "VK_LAYER_KHRONOS_validation";
-    uint32_t layer_count;
+    Uint32 layer_count;
     result = vkEnumerateInstanceLayerProperties(&layer_count, NULL);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "There was an error setting up Vulkan. Could not get instance layer properties", &cleanup))
         return -3;
-    VkLayerProperties* layer_properties = (VkLayerProperties*) malloc(layer_count * sizeof(VkLayerProperties));
+    VkLayerProperties* layer_properties = (VkLayerProperties*) SDL_malloc(layer_count * sizeof(VkLayerProperties));
     result = vkEnumerateInstanceLayerProperties(&layer_count, layer_properties);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "There was an error setting up Vulkan. Could not get instance layer properties", &cleanup))
         return -3;
-    bool validation_available = false;
-    for (uint32_t i=0; i<layer_count; i++) {
-        for (uint32_t j=0; j<validation_layers_count; j++) {
-            if (strcmp(validation_layers[j], layer_properties[i].layerName) == 0) {
-                validation_available = true;
+    SDL_bool validation_available = SDL_FALSE;
+    for (Uint32 i=0; i<layer_count; i++) {
+        for (Uint32 j=0; j<validation_layers_count; j++) {
+            if (SDL_strcmp(validation_layers[j], layer_properties[i].layerName) == 0) {
+                validation_available = SDL_TRUE;
                 break;
             }
         }
@@ -168,34 +164,34 @@ int main(int argc, char** argv) {
     }
     if (check_error(!validation_available, "Error in Vulkan Setup.", "Validation layer not available.", &cleanup))
         return -3;
-    free(layer_properties);
+    SDL_free(layer_properties);
 #endif
 
     VkInstanceCreateInfo instance_create_info;
     instance_create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     instance_create_info.pNext = NULL;
     instance_create_info.pApplicationInfo = &app_info;
-    uint32_t required_extensions_count = 0;
+    Uint32 required_extensions_count = 0;
     const char** required_extensions;
     sdl_result = SDL_Vulkan_GetInstanceExtensions(window, &required_extensions_count, NULL);
     if (check_error(!sdl_result, "Error in getting Required Vulkan Extensions", SDL_GetError(), &cleanup))
         return -4;
-    required_extensions = (char**) malloc(required_extensions_count * sizeof(char*));
+    required_extensions = (char**) SDL_malloc(required_extensions_count * sizeof(char*));
     sdl_result = SDL_Vulkan_GetInstanceExtensions(window, &required_extensions_count, required_extensions);
     if (check_error(!sdl_result, "Error in getting Required Vulkan Extensions", SDL_GetError(), &cleanup))
         return -4;
-    uint32_t available_extensions_count;
+    Uint32 available_extensions_count;
     result = vkEnumerateInstanceExtensionProperties(NULL, &available_extensions_count, NULL);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get available instance extensions.", &cleanup))
         return -4;
-    VkExtensionProperties* available_extensions = (VkExtensionProperties*) malloc(available_extensions_count * sizeof(VkExtensionProperties));
+    VkExtensionProperties* available_extensions = (VkExtensionProperties*) SDL_malloc(available_extensions_count * sizeof(VkExtensionProperties));
     result = vkEnumerateInstanceExtensionProperties(NULL, &available_extensions_count, available_extensions);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get available instance extensions.", &cleanup))
         return -4;
-    uint32_t required_extensions_available = 0;
-    for (uint32_t i=0; i<available_extensions_count; i++) {
-        for (uint32_t j=0; j<required_extensions_count; j++) {
-            if (strcmp(required_extensions[j], available_extensions[i].extensionName) == 0) {
+    Uint32 required_extensions_available = 0;
+    for (Uint32 i=0; i<available_extensions_count; i++) {
+        for (Uint32 j=0; j<required_extensions_count; j++) {
+            if (SDL_strcmp(required_extensions[j], available_extensions[i].extensionName) == 0) {
                 required_extensions_available++;
                 break;
             }
@@ -225,14 +221,14 @@ int main(int argc, char** argv) {
     cleanup.surface = &surface;
 
     VkPhysicalDevice physical_device = VK_NULL_HANDLE;
-    uint32_t device_count = 0;
+    Uint32 device_count = 0;
     result = vkEnumeratePhysicalDevices(instance, &device_count, NULL);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get physical devices.", &cleanup))
         return -6;
     if (check_error(device_count == 0, "Error in Vulkan Setup.", "Could not find a GPU with Vulkan support.", &cleanup))
         return -6;
     SDL_Log("Found %i Vulkan Devices\n", device_count);
-    VkPhysicalDevice* devices = (VkPhysicalDevice*) malloc(device_count * sizeof(VkPhysicalDevice));
+    VkPhysicalDevice* devices = (VkPhysicalDevice*) SDL_malloc(device_count * sizeof(VkPhysicalDevice));
     result = vkEnumeratePhysicalDevices(instance, &device_count, devices);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get physical devices.", &cleanup))
         return -6;
@@ -249,21 +245,21 @@ int main(int argc, char** argv) {
     if (check_error(physical_device == VK_NULL_HANDLE, "Error in Vulkan Setup.", "Could not find a suitable GPU.", &cleanup))
         return -6;
 
-    const uint32_t required_device_extensions_count = 1;
-    const char** required_device_extensions = (char**) malloc(required_device_extensions_count * sizeof(char*));
+    const Uint32 required_device_extensions_count = 1;
+    const char** required_device_extensions = (char**) SDL_malloc(required_device_extensions_count * sizeof(char*));
     required_device_extensions[0] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
-    uint32_t device_extensions_count;
+    Uint32 device_extensions_count;
     result = vkEnumerateDeviceExtensionProperties(physical_device, NULL, &device_extensions_count, NULL);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get available device extensions.", &cleanup))
         return -6;
-    VkExtensionProperties* device_extensions = (VkExtensionProperties*) malloc(device_extensions_count * sizeof(VkExtensionProperties));
+    VkExtensionProperties* device_extensions = (VkExtensionProperties*) SDL_malloc(device_extensions_count * sizeof(VkExtensionProperties));
     result = vkEnumerateDeviceExtensionProperties(physical_device, NULL, &device_extensions_count, device_extensions);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get available device extensions.", &cleanup))
         return -6;
-    uint32_t required_device_extensions_available = 0;
-    for (uint32_t i=0; i<device_extensions_count; i++) {
-        for (uint32_t j=0; j<required_device_extensions_count; j++) {
-            if (strcmp(required_device_extensions[j], device_extensions[i].extensionName) == 0) {
+    Uint32 required_device_extensions_available = 0;
+    for (Uint32 i=0; i<device_extensions_count; i++) {
+        for (Uint32 j=0; j<required_device_extensions_count; j++) {
+            if (SDL_strcmp(required_device_extensions[j], device_extensions[i].extensionName) == 0) {
                 required_device_extensions_available++;
                 break;
             }
@@ -275,35 +271,35 @@ int main(int argc, char** argv) {
     result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get physical device surface capabilities.", &cleanup))
         return -6;
-    uint32_t surface_formats_count;
+    Uint32 surface_formats_count;
     result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &surface_formats_count, NULL);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get physical device surface formats.", &cleanup))
         return -6;
     if (check_error(surface_formats_count==0, "Error in Vulkan Setup.", "Device does not have surface formats", &cleanup))
         return -6;
-    VkSurfaceFormatKHR* surface_formats = (VkSurfaceFormatKHR*) malloc(surface_formats_count * sizeof(VkSurfaceFormatKHR));
+    VkSurfaceFormatKHR* surface_formats = (VkSurfaceFormatKHR*) SDL_malloc(surface_formats_count * sizeof(VkSurfaceFormatKHR));
     result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &surface_formats_count, surface_formats);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get physical device surface formats.", &cleanup))
         return -6;
-    uint32_t present_modes_count;
+    Uint32 present_modes_count;
     result = vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_modes_count, NULL);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get physical device present modes.", &cleanup))
         return -6;
     if (check_error(present_modes_count==0, "Error in Vulkan Setup.", "Device does not have present modes", &cleanup))
         return -6;
-    VkPresentModeKHR* present_modes = (VkPresentModeKHR*) malloc(present_modes_count * sizeof(VkPresentModeKHR));
+    VkPresentModeKHR* present_modes = (VkPresentModeKHR*) SDL_malloc(present_modes_count * sizeof(VkPresentModeKHR));
     result = vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_modes_count, present_modes);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get physical device present modes.", &cleanup))
         return -6;
     VkSurfaceFormatKHR selected_surface_format = surface_formats[0];
-    for (uint32_t i=0; i<surface_formats_count; i++) {
+    for (Uint32 i=0; i<surface_formats_count; i++) {
         if (surface_formats[i].format == VK_FORMAT_B8G8R8A8_SRGB && surface_formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
             selected_surface_format = surface_formats[i];
             break;
         }
     }
     VkPresentModeKHR selected_present_mode = VK_PRESENT_MODE_FIFO_KHR;
-    for (uint32_t i=0; i<present_modes_count; i++) {
+    for (Uint32 i=0; i<present_modes_count; i++) {
         if (present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
             selected_present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
             break;
@@ -319,15 +315,15 @@ int main(int argc, char** argv) {
         swap_extent = surface_capabilities.maxImageExtent;
     }
 
-    uint32_t queue_family_count = 0;
+    Uint32 queue_family_count = 0;
     // This method does not return a VkResult
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, NULL);
     SDL_Log("Found %i queue families.\n", queue_family_count);
-    VkQueueFamilyProperties* queue_families = (VkQueueFamilyProperties*) malloc(queue_family_count * sizeof(VkQueueFamilyProperties));
+    VkQueueFamilyProperties* queue_families = (VkQueueFamilyProperties*) SDL_malloc(queue_family_count * sizeof(VkQueueFamilyProperties));
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_families);
     int graphics_queue_family = -1;
     int presentation_queue_family = -1;
-    for (uint32_t i=0; i<queue_family_count; i++) {
+    for (Uint32 i=0; i<queue_family_count; i++) {
         if (presentation_queue_family < 0) {
             VkBool32 supports_presentaion;
             result = vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &supports_presentaion);
@@ -364,7 +360,7 @@ int main(int argc, char** argv) {
     queue_create_info.queueCount = 1;
     queue_create_info.pQueuePriorities = &graphics_queue_priority;
     // TODO (16 Oct 2020 sam): Figure out whether all features here are correctly
-    // being set to false.
+    // being set to SDL_FALSE.
     VkPhysicalDeviceFeatures device_features = {VK_FALSE};
     VkDeviceCreateInfo device_create_info;
     device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -387,16 +383,16 @@ int main(int argc, char** argv) {
     cleanup.device = &device;
     VkQueue graphics_queue;
     VkQueue presentation_queue;
-    uint32_t graphics_queue_index = 0;
-    uint32_t presentation_queue_index = 0;
+    Uint32 graphics_queue_index = 0;
+    Uint32 presentation_queue_index = 0;
     vkGetDeviceQueue(device, graphics_queue_family, graphics_queue_index, &graphics_queue);
     vkGetDeviceQueue(device, presentation_queue_family, presentation_queue_index, &presentation_queue);
     cleanup.presentation_queue = &presentation_queue;
 
-    uint32_t queue_family_indices[2];
+    Uint32 queue_family_indices[2];
     queue_family_indices[0] = graphics_queue_family;
     queue_family_indices[1] = presentation_queue_family;
-    uint32_t image_count = surface_capabilities.minImageCount + 1;
+    Uint32 image_count = surface_capabilities.minImageCount + 1;
     if (surface_capabilities.maxImageCount>0 && image_count>surface_capabilities.maxImageCount)
         image_count = surface_capabilities.maxImageCount;
     SDL_Log("Image Count: %i\n", image_count);
@@ -431,18 +427,18 @@ int main(int argc, char** argv) {
         return -7;
     cleanup.swapchain = &swapchain;
 
-    uint32_t swapchain_image_count;
+    Uint32 swapchain_image_count;
     result = vkGetSwapchainImagesKHR(device, swapchain, &swapchain_image_count, NULL);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get swapchain images.", &cleanup))
         return -7;
-    VkImage* swapchain_images = (VkImage*) malloc(swapchain_image_count * sizeof(VkImage));
+    VkImage* swapchain_images = (VkImage*) SDL_malloc(swapchain_image_count * sizeof(VkImage));
     result = vkGetSwapchainImagesKHR(device, swapchain, &swapchain_image_count, swapchain_images);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not get swapchain images.", &cleanup))
         return -7;
     VkFormat swapchain_image_format = swapchain_create_info.imageFormat;
     VkExtent2D swapchain_extent = swapchain_create_info.imageExtent;
-    VkImageView* swapchain_image_views = (VkImageView*) malloc(swapchain_image_count * sizeof(VkImageView));
-    for (uint32_t i=0; i<swapchain_image_count; i++) {
+    VkImageView* swapchain_image_views = (VkImageView*) SDL_malloc(swapchain_image_count * sizeof(VkImageView));
+    for (Uint32 i=0; i<swapchain_image_count; i++) {
         VkImageViewCreateInfo imageview_create_info;
         imageview_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         imageview_create_info.pNext = NULL;
@@ -516,7 +512,7 @@ int main(int argc, char** argv) {
 
 
     SDL_Log("Loading shaders\n");
-    uint32_t* vertex_spirv;
+    Uint32* vertex_spirv;
     Sint64 vertex_shader_length;
     vertex_shader_length = read_shader_file("data/spirv/vertex.spv", &vertex_spirv);
     if (check_error(vertex_shader_length < 0, "Error in Vulkan Setup.", "Could not read vertex shader.", &cleanup))
@@ -532,7 +528,7 @@ int main(int argc, char** argv) {
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not create vertex shader module.", &cleanup))
         return -8;
     cleanup.vertex_shader_module = &vertex_shader_module;
-    uint32_t* fragment_spirv;
+    Uint32* fragment_spirv;
     Sint64 fragment_shader_length;
     fragment_shader_length = read_shader_file("data/spirv/fragment.spv", &fragment_spirv);
     if (check_error(fragment_shader_length < 0, "Error in Vulkan Setup.", "Could not read fragment shader.", &cleanup))
@@ -685,8 +681,8 @@ int main(int argc, char** argv) {
         return -8;
     cleanup.graphics_pipeline = &graphics_pipeline;
 
-    VkFramebuffer* swapchain_framebuffers = (VkFramebuffer*) malloc(swapchain_image_count * sizeof(VkFramebuffer));
-    for (uint32_t i=0; i<swapchain_image_count; i++) {
+    VkFramebuffer* swapchain_framebuffers = (VkFramebuffer*) SDL_malloc(swapchain_image_count * sizeof(VkFramebuffer));
+    for (Uint32 i=0; i<swapchain_image_count; i++) {
         VkImageView attachments[1];
         attachments[0] = swapchain_image_views[i];
         VkFramebufferCreateInfo framebuffer_create_info;
@@ -715,7 +711,7 @@ int main(int argc, char** argv) {
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not create command_pool", &cleanup))
         return -9;
     cleanup.command_pool = &command_pool;
-    VkCommandBuffer* command_buffers = (VkCommandBuffer*) malloc(swapchain_image_count * sizeof(VkCommandBuffer));
+    VkCommandBuffer* command_buffers = (VkCommandBuffer*) SDL_malloc(swapchain_image_count * sizeof(VkCommandBuffer));
     VkCommandBufferAllocateInfo command_buffer_allocate_info;
     command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     command_buffer_allocate_info.pNext = NULL;
@@ -725,7 +721,7 @@ int main(int argc, char** argv) {
     result = vkAllocateCommandBuffers(device, &command_buffer_allocate_info, command_buffers);
     if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not allocate command buffers", &cleanup))
         return -9;
-    for (uint32_t i=0; i<swapchain_image_count; i++) {
+    for (Uint32 i=0; i<swapchain_image_count; i++) {
         VkCommandBufferBeginInfo command_buffer_begin_info;
         command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         command_buffer_begin_info.pNext = NULL;
@@ -767,7 +763,7 @@ int main(int argc, char** argv) {
     fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fence_create_info.pNext = NULL;
     fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    for (uint32_t i=0; i<MAX_FRAMES_IN_FLIGHT; i++) {
+    for (Uint32 i=0; i<MAX_FRAMES_IN_FLIGHT; i++) {
         result = vkCreateSemaphore(device, &semaphore_create_info, NULL, &image_available_semaphores[i]);
         if (check_error(result != VK_SUCCESS, "Error in Vulkan Setup.", "Could not create image semaphore", &cleanup))
             return -9;
@@ -782,23 +778,27 @@ int main(int argc, char** argv) {
     cleanup.render_finished_semaphores = render_finished_semaphores;
     cleanup.in_flight_fences = in_flight_fences;
 
-    free(devices);
-    free(device_extensions);
-    free(present_modes);
-    free(surface_formats);
-    free((char*)validation_layers);
-    free(queue_families);
-    free((char*)required_device_extensions);
-    free(swapchain_images);
-    free(fragment_spirv);
-    free(vertex_spirv);
-    free((char*)required_extensions);
-    free(available_extensions);
+    SDL_Log("Freeing memory stuffs\n");
+#if DEBUG_BUILD
+    SDL_free(validation_layers);
+#endif
+    SDL_Log("Freeing after debug\n");
+    SDL_free(devices);
+    SDL_free(device_extensions);
+    SDL_free(present_modes);
+    SDL_free(surface_formats);
+    SDL_free(queue_families);
+    SDL_free((char*)required_device_extensions);
+    SDL_free(swapchain_images);
+    SDL_free(fragment_spirv);
+    SDL_free(vertex_spirv);
+    SDL_free((char*)required_extensions);
+    SDL_free(available_extensions);
 
     SDL_Log("Running Event Loop\n");
     SDL_Event e;
-    uint32_t frame_index = 0;
-    while (true) {
+    Uint32 frame_index = 0;
+    while (SDL_TRUE) {
         vkWaitForFences(device, 1, &in_flight_fences[frame_index], VK_TRUE, UINT64_MAX);
         SDL_PollEvent(&e);
         if (e.type == SDL_QUIT) {
@@ -806,7 +806,7 @@ int main(int argc, char** argv) {
             break;
         } 
         // draw frame.
-        uint32_t image_index;
+        Uint32 image_index;
         result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, image_available_semaphores[frame_index], VK_NULL_HANDLE, &image_index);
         if (check_error(result != VK_SUCCESS, "Error in Rendering.", "Could not acquire next image", &cleanup))
             return -10;
@@ -851,28 +851,28 @@ int main(int argc, char** argv) {
 
     vkQueueWaitIdle(presentation_queue);
     vkDeviceWaitIdle(device);
-    for (uint32_t i=0; i<MAX_FRAMES_IN_FLIGHT; i++) {
+    for (Uint32 i=0; i<MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(device, image_available_semaphores[i], NULL);
         vkDestroySemaphore(device, render_finished_semaphores[i], NULL);
         vkDestroyFence(device, in_flight_fences[i], NULL);
     }
     vkDestroyCommandPool(device, command_pool, NULL);
-    for (uint32_t i=0; i<swapchain_image_count; i++)
+    for (Uint32 i=0; i<swapchain_image_count; i++)
         vkDestroyFramebuffer(device, swapchain_framebuffers[i], NULL); 
     vkDestroyPipeline(device, graphics_pipeline, NULL);
     vkDestroyPipelineLayout(device, pipeline_layout, NULL);
     vkDestroyRenderPass(device, render_pass, NULL);
     vkDestroyShaderModule(device, vertex_shader_module, NULL);
     vkDestroyShaderModule(device, fragment_shader_module, NULL);
-    for (uint32_t i=0; i<swapchain_image_count; i++)
+    for (Uint32 i=0; i<swapchain_image_count; i++)
         vkDestroyImageView(device, swapchain_image_views[i], NULL); 
     vkDestroySwapchainKHR(device, swapchain, NULL);
     vkDestroyDevice(device, NULL);
     vkDestroySurfaceKHR(instance, surface, NULL);
     vkDestroyInstance(instance, NULL);
-    free(command_buffers);
-    free(swapchain_image_views);
-    free(swapchain_framebuffers);
+    SDL_free(command_buffers);
+    SDL_free(swapchain_image_views);
+    SDL_free(swapchain_framebuffers);
     SDL_Log("Quitting Application\n");
     SDL_DestroyWindow(window);
     SDL_Quit();
