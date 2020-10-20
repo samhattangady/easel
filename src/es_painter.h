@@ -11,6 +11,7 @@ typedef struct {
     VkInstance instance;
     VkSurfaceKHR surface;
     VkDevice device;
+    VkPhysicalDevice physical_device;
     VkSwapchainKHR swapchain;
     Uint32 swapchain_image_count;
     Uint32 frame_index;
@@ -29,6 +30,7 @@ typedef struct {
     VkQueue presentation_queue;
     VkCommandBuffer* command_buffers;
     VkQueue graphics_queue;
+    SDL_bool buffer_resized;
 } EsPainter;
 
 extern SDL_bool painter_initialise(EsPainter* painter);

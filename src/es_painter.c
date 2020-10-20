@@ -1,6 +1,10 @@
 #include "es_painter.h"
 #include "SDL_vulkan.h"
 
+void _painter_cleanup_swapchain(EsPainter* painter);
+SDL_bool _painter_create_swapchain(EsPainter* painter);
+SDL_bool _painter_recreate_swapchain(EsPainter* painter);
+
 SDL_bool painter_initialise(EsPainter* painter) {
     int init_success = SDL_Init(SDL_INIT_VIDEO);
     if (init_success !=0) {
@@ -10,7 +14,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
     }
     SDL_Window* window;
     window = SDL_CreateWindow("Easel", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                              1024, 768, SDL_WINDOW_VULKAN);
+                              1024, 768, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
     if (window == NULL) {
         warehouse_error_popup("Error in SDL Window Creation.", SDL_GetError());
         painter_cleanup(painter);
@@ -137,7 +141,6 @@ SDL_bool painter_initialise(EsPainter* painter) {
         return SDL_FALSE;
     }
 
-    VkPhysicalDevice physical_device = VK_NULL_HANDLE;
     Uint32 device_count = 0;
     result = vkEnumeratePhysicalDevices(painter->instance, &device_count, NULL);
     if (result != VK_SUCCESS) {
@@ -161,31 +164,86 @@ SDL_bool painter_initialise(EsPainter* painter) {
     if (device_count == 1)
         // Since there is only one device available, we select that. Later on, we check
         // whether it has all the functionality that we need.
-        physical_device = devices[0];
+        painter->physical_device = devices[0];
     else {
         // TODO (16 Oct 2020 sam): Implement selection of best device
         // Would need to check queue families available etc.
         // Just defaulting to first one for now.
-        physical_device = devices[0];
+        painter->physical_device = devices[0];
     }
-    if (physical_device == VK_NULL_HANDLE) {
+    if (painter->physical_device == VK_NULL_HANDLE) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not find a suitable GPU.");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
+    sdl_result = _painter_create_swapchain(painter);
+    if (!sdl_result) {
+        // The error would be called from the _painter_create_swapchain method.
+        return SDL_FALSE;
+    }
+
+    SDL_Log("Creating Synchronisation Elements\n");
+    // need to malloc here =P
+    painter->image_available_semaphores = (VkSemaphore*) SDL_malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkSemaphore));
+    painter->render_finished_semaphores = (VkSemaphore*) SDL_malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkSemaphore));
+    VkSemaphoreCreateInfo semaphore_create_info;
+    semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    semaphore_create_info.pNext = NULL;
+    semaphore_create_info.flags = 0;
+    painter->in_flight_fences = (VkFence*) SDL_malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkFence));
+    painter->images_in_flight = (VkFence*) SDL_calloc(painter->swapchain_image_count, sizeof(VkFence));
+    VkFenceCreateInfo fence_create_info;
+    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_create_info.pNext = NULL;
+    fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    for (Uint32 i=0; i<MAX_FRAMES_IN_FLIGHT; i++) {
+        result = vkCreateSemaphore(painter->device, &semaphore_create_info, NULL, &painter->image_available_semaphores[i]);
+        if (result != VK_SUCCESS) {
+            warehouse_error_popup("Error in Vulkan Setup.", "Could not create image semaphore");
+            painter_cleanup(painter);
+            return SDL_FALSE;
+        }
+        result = vkCreateSemaphore(painter->device, &semaphore_create_info, NULL, &painter->render_finished_semaphores[i]);
+        if (result != VK_SUCCESS) {
+            warehouse_error_popup("Error in Vulkan Setup.", "Could not create image semaphore");
+            painter_cleanup(painter);
+            return SDL_FALSE;
+        }
+        result = vkCreateFence(painter->device, &fence_create_info, NULL, &painter->in_flight_fences[i]);
+        if (result != VK_SUCCESS) {
+            warehouse_error_popup("Error in Vulkan Setup.", "Could not create fence");
+            painter_cleanup(painter);
+            return SDL_FALSE;
+        }
+    }
+    painter->frame_index = 0;
+    painter->buffer_resized = SDL_FALSE;
+
+#if DEBUG_BUILD
+    SDL_free(validation_layers);
+#endif
+    SDL_free(devices);
+    SDL_free((char*)required_extensions);
+    SDL_free(available_extensions);
+
+    return SDL_TRUE;
+}
+
+SDL_bool _painter_create_swapchain(EsPainter* painter) {
+    VkResult result;
 
     const Uint32 required_device_extensions_count = 1;
     const char** required_device_extensions = (char**) SDL_malloc(required_device_extensions_count * sizeof(char*));
     required_device_extensions[0] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
     Uint32 device_extensions_count;
-    result = vkEnumerateDeviceExtensionProperties(physical_device, NULL, &device_extensions_count, NULL);
+    result = vkEnumerateDeviceExtensionProperties(painter->physical_device, NULL, &device_extensions_count, NULL);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not get available device extensions.");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
     VkExtensionProperties* device_extensions = (VkExtensionProperties*) SDL_malloc(device_extensions_count * sizeof(VkExtensionProperties));
-    result = vkEnumerateDeviceExtensionProperties(physical_device, NULL, &device_extensions_count, device_extensions);
+    result = vkEnumerateDeviceExtensionProperties(painter->physical_device, NULL, &device_extensions_count, device_extensions);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not get available device extensions.");
         painter_cleanup(painter);
@@ -206,14 +264,14 @@ SDL_bool painter_initialise(EsPainter* painter) {
         return SDL_FALSE;
     }
     VkSurfaceCapabilitiesKHR surface_capabilities;
-    result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, painter->surface, &surface_capabilities);
+    result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(painter->physical_device, painter->surface, &surface_capabilities);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not get physical device surface capabilities.");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
     Uint32 surface_formats_count;
-    result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, painter->surface, &surface_formats_count, NULL);
+    result = vkGetPhysicalDeviceSurfaceFormatsKHR(painter->physical_device, painter->surface, &surface_formats_count, NULL);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not get physical device surface formats.");
         painter_cleanup(painter);
@@ -225,14 +283,14 @@ SDL_bool painter_initialise(EsPainter* painter) {
         return SDL_FALSE;
     }
     VkSurfaceFormatKHR* surface_formats = (VkSurfaceFormatKHR*) SDL_malloc(surface_formats_count * sizeof(VkSurfaceFormatKHR));
-    result = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, painter->surface, &surface_formats_count, surface_formats);
+    result = vkGetPhysicalDeviceSurfaceFormatsKHR(painter->physical_device, painter->surface, &surface_formats_count, surface_formats);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not get physical device surface formats.");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
     Uint32 present_modes_count;
-    result = vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, painter->surface, &present_modes_count, NULL);
+    result = vkGetPhysicalDeviceSurfacePresentModesKHR(painter->physical_device, painter->surface, &present_modes_count, NULL);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not get physical device present modes.");
         painter_cleanup(painter);
@@ -244,7 +302,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
         return SDL_FALSE;
     }
     VkPresentModeKHR* present_modes = (VkPresentModeKHR*) SDL_malloc(present_modes_count * sizeof(VkPresentModeKHR));
-    result = vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, painter->surface, &present_modes_count, present_modes);
+    result = vkGetPhysicalDeviceSurfacePresentModesKHR(painter->physical_device, painter->surface, &present_modes_count, present_modes);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not get physical device present modes.");
         painter_cleanup(painter);
@@ -271,21 +329,25 @@ SDL_bool painter_initialise(EsPainter* painter) {
         SDL_Log("Calculating the swap extent.");
         // TODO (17 Oct 2020 sam): Vulkan tutorial does some random fancy shit here
         // See what this should be.
-        swap_extent = surface_capabilities.maxImageExtent;
+        int width;
+        int height;
+        SDL_Vulkan_GetDrawableSize(painter->window, &width, &height);
+        swap_extent.width = SDL_max(surface_capabilities.minImageExtent.width, SDL_min(surface_capabilities.maxImageExtent.width, width));
+        swap_extent.height = SDL_max(surface_capabilities.minImageExtent.height, SDL_min(surface_capabilities.maxImageExtent.height, height));
     }
 
     Uint32 queue_family_count = 0;
     // This method does not return a VkResult
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, NULL);
+    vkGetPhysicalDeviceQueueFamilyProperties(painter->physical_device, &queue_family_count, NULL);
     SDL_Log("Found %i queue families.\n", queue_family_count);
     VkQueueFamilyProperties* queue_families = (VkQueueFamilyProperties*) SDL_malloc(queue_family_count * sizeof(VkQueueFamilyProperties));
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_families);
+    vkGetPhysicalDeviceQueueFamilyProperties(painter->physical_device, &queue_family_count, queue_families);
     int graphics_queue_family = -1;
     int presentation_queue_family = -1;
     for (Uint32 i=0; i<queue_family_count; i++) {
         if (presentation_queue_family < 0) {
             VkBool32 supports_presentaion;
-            result = vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, painter->surface, &supports_presentaion);
+            result = vkGetPhysicalDeviceSurfaceSupportKHR(painter->physical_device, i, painter->surface, &supports_presentaion);
             if (result != VK_SUCCESS) {
                 warehouse_error_popup("Error in Vulkan Setup.", "Could not check queue family presentation support.");
                 painter_cleanup(painter);
@@ -347,7 +409,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
     device_create_info.ppEnabledExtensionNames = required_device_extensions;
     device_create_info.pQueueCreateInfos = &queue_create_info;
     device_create_info.pEnabledFeatures = &device_features;
-    result = vkCreateDevice(physical_device, &device_create_info, NULL, &painter->device);
+    result = vkCreateDevice(painter->physical_device, &device_create_info, NULL, &painter->device);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create device.");
         painter_cleanup(painter);
@@ -748,47 +810,6 @@ SDL_bool painter_initialise(EsPainter* painter) {
         }
     }
 
-    SDL_Log("Creating Synchronisation Elements\n");
-    // need to malloc here =P
-    painter->image_available_semaphores = (VkSemaphore*) SDL_malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkSemaphore));
-    painter->render_finished_semaphores = (VkSemaphore*) SDL_malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkSemaphore));
-    VkSemaphoreCreateInfo semaphore_create_info;
-    semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    semaphore_create_info.pNext = NULL;
-    semaphore_create_info.flags = 0;
-    painter->in_flight_fences = (VkFence*) SDL_malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkFence));
-    painter->images_in_flight = (VkFence*) SDL_calloc(painter->swapchain_image_count, sizeof(VkFence));
-    VkFenceCreateInfo fence_create_info;
-    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_create_info.pNext = NULL;
-    fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-    for (Uint32 i=0; i<MAX_FRAMES_IN_FLIGHT; i++) {
-        result = vkCreateSemaphore(painter->device, &semaphore_create_info, NULL, &painter->image_available_semaphores[i]);
-        if (result != VK_SUCCESS) {
-            warehouse_error_popup("Error in Vulkan Setup.", "Could not create image semaphore");
-            painter_cleanup(painter);
-            return SDL_FALSE;
-        }
-        result = vkCreateSemaphore(painter->device, &semaphore_create_info, NULL, &painter->render_finished_semaphores[i]);
-        if (result != VK_SUCCESS) {
-            warehouse_error_popup("Error in Vulkan Setup.", "Could not create image semaphore");
-            painter_cleanup(painter);
-            return SDL_FALSE;
-        }
-        result = vkCreateFence(painter->device, &fence_create_info, NULL, &painter->in_flight_fences[i]);
-        if (result != VK_SUCCESS) {
-            warehouse_error_popup("Error in Vulkan Setup.", "Could not create fence");
-            painter_cleanup(painter);
-            return SDL_FALSE;
-        }
-    }
-    painter->frame_index = 0;
-
-#if DEBUG_BUILD
-    SDL_free(validation_layers);
-#endif
-    SDL_free(devices);
-    SDL_free(device_extensions);
     SDL_free(present_modes);
     SDL_free(surface_formats);
     SDL_free(queue_families);
@@ -796,19 +817,25 @@ SDL_bool painter_initialise(EsPainter* painter) {
     SDL_free(swapchain_images);
     SDL_free(fragment_spirv);
     SDL_free(vertex_spirv);
-    SDL_free((char*)required_extensions);
-    SDL_free(available_extensions);
-
+    SDL_free(device_extensions);
     return SDL_TRUE;
 }
 
 SDL_bool painter_paint_frame(EsPainter* painter) {
+    // TODO (20 Oct 2020 sam): We need to handle the case of minimized frames.
     Uint32 image_index;
     VkResult result;
+    SDL_bool sdl_result;
 
     vkWaitForFences(painter->device, 1, &painter->in_flight_fences[painter->frame_index], VK_TRUE, UINT64_MAX);
     result = vkAcquireNextImageKHR(painter->device, painter->swapchain, UINT64_MAX, painter->image_available_semaphores[painter->frame_index], VK_NULL_HANDLE, &image_index);
-    if (result != VK_SUCCESS) {
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || painter->buffer_resized) {
+        painter->buffer_resized = SDL_FALSE;
+        sdl_result = _painter_recreate_swapchain(painter);
+        if (!sdl_result) {
+            return SDL_FALSE;
+        }
+    } else if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Rendering.", "Could not acquire next image");
         painter_cleanup(painter);
         return SDL_FALSE;
@@ -859,11 +886,32 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     return SDL_TRUE;
 }
 
-void painter_cleanup(EsPainter* painter) {
+void _painter_cleanup_swapchain(EsPainter* painter) {
     vkQueueWaitIdle(painter->presentation_queue);
     vkDeviceWaitIdle(painter->device);
-    if (painter->presentation_queue)
-        vkQueueWaitIdle(painter->presentation_queue);
+    if (painter->swapchain_framebuffers) {
+        for (Uint32 i=0; i<painter->swapchain_image_count; i++)
+            vkDestroyFramebuffer(painter->device, painter->swapchain_framebuffers[i], NULL);
+    }
+    if (painter->command_buffers)
+        vkFreeCommandBuffers(painter->device, painter->command_pool, painter->swapchain_image_count, painter->command_buffers);
+    if (painter->graphics_pipeline)
+        vkDestroyPipeline(painter->device, painter->graphics_pipeline, NULL);
+    if (painter->pipeline_layout)
+        vkDestroyPipelineLayout(painter->device, painter->pipeline_layout, NULL);
+    if (painter->render_pass)
+        vkDestroyRenderPass(painter->device, painter->render_pass, NULL);
+    if (painter->swapchain_image_count > 0) {
+        for (Uint32 i=0; i<painter->swapchain_image_count; i++)
+            vkDestroyImageView(painter->device, painter->swapchain_image_views[i], NULL);
+    }
+    if (painter->swapchain)
+        vkDestroySwapchainKHR(painter->device, painter->swapchain, NULL);
+    return;
+}
+
+void painter_cleanup(EsPainter* painter) {
+    _painter_cleanup_swapchain(painter);
     if (painter->in_flight_fences)
         for (Uint32 i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
             vkDestroyFence(painter->device, painter->in_flight_fences[i], NULL);
@@ -875,26 +923,10 @@ void painter_cleanup(EsPainter* painter) {
             vkDestroySemaphore(painter->device, painter->render_finished_semaphores[i], NULL);
     if (painter->command_pool)
         vkDestroyCommandPool(painter->device, painter->command_pool, NULL);
-    if (painter->swapchain_framebuffers) {
-        for (Uint32 i=0; i<painter->swapchain_image_count; i++)
-            vkDestroyFramebuffer(painter->device, painter->swapchain_framebuffers[i], NULL);
-    }
-    if (painter->graphics_pipeline)
-        vkDestroyPipeline(painter->device, painter->graphics_pipeline, NULL);
-    if (painter->pipeline_layout)
-        vkDestroyPipelineLayout(painter->device, painter->pipeline_layout, NULL);
-    if (painter->render_pass)
-        vkDestroyRenderPass(painter->device, painter->render_pass, NULL);
     if (painter->vertex_shader_module)
         vkDestroyShaderModule(painter->device, painter->vertex_shader_module, NULL);
     if (painter->fragment_shader_module)
         vkDestroyShaderModule(painter->device, painter->fragment_shader_module, NULL);
-    if (painter->swapchain_image_count > 0) {
-        for (Uint32 i=0; i<painter->swapchain_image_count; i++)
-            vkDestroyImageView(painter->device, painter->swapchain_image_views[i], NULL);
-    }
-    if (painter->swapchain)
-        vkDestroySwapchainKHR(painter->device, painter->swapchain, NULL);
     if (painter->device) {
         vkDeviceWaitIdle(painter->device);
         vkDestroyDevice(painter->device, NULL);
@@ -905,9 +937,9 @@ void painter_cleanup(EsPainter* painter) {
         vkDestroyInstance(painter->instance, NULL);
     if (painter->window)
         SDL_DestroyWindow(painter->window);
-    // SDL_free(command_buffers);
-    // SDL_free(swapchain_image_views);
-    // SDL_free(swapchain_framebuffers);
+    SDL_free(painter->command_buffers);
+    SDL_free(painter->swapchain_image_views);
+    SDL_free(painter->swapchain_framebuffers);
     SDL_Quit();
 }
 
@@ -939,4 +971,15 @@ Sint64 painter_read_shader_file(const char* filename, Uint32** buffer) {
     SDL_RWclose(shader_file);
     *buffer = temp_buffer;
     return file_size;
+}
+
+SDL_bool _painter_recreate_swapchain(EsPainter* painter) {
+    _painter_cleanup_swapchain(painter);
+    SDL_bool sdl_result = _painter_create_swapchain(painter);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Rendering.", "Could not recreate swapchain");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    return SDL_TRUE;
 }

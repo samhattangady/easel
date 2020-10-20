@@ -22,12 +22,16 @@ int main(int argc, char** argv) {
         if (e.type == SDL_QUIT) {
             SDL_Log("Program quit after %i ticks", e.quit.timestamp);
             break;
-        } 
+        } if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED || e.window.event == SDL_WINDOWEVENT_MINIMIZED) {
+            SDL_Log("Window is resized\n");
+            painter.buffer_resized = SDL_TRUE;
+        }
         result = painter_paint_frame(&painter);
         if (!result)
             return -2;
     }
     
     painter_cleanup(&painter);
+    SDL_Log("Quitting Easel\n");
     return 0;
 }
