@@ -1,11 +1,13 @@
 #include "es_painter.h"
 #include "SDL_vulkan.h"
 
-#define HARDCODED_NUM_VERTICES 3
+#define HARDCODED_NUM_VERTICES 4
+#define HARDCODED_NUM_INDICES 6
 
 void _painter_cleanup_swapchain(EsPainter* painter);
 SDL_bool _painter_create_swapchain(EsPainter* painter);
 SDL_bool _painter_recreate_swapchain(EsPainter* painter);
+SDL_bool _painter_create_buffer(EsPainter* painter, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer* buffer, VkDeviceMemory* bufferMemory);
 
 SDL_bool painter_initialise(EsPainter* painter) {
     int init_success = SDL_Init(SDL_INIT_VIDEO);
@@ -36,18 +38,29 @@ SDL_bool painter_initialise(EsPainter* painter) {
     app_info.apiVersion = VK_API_VERSION_1_0;
 
     painter->vertices = (TutorialVertex*) SDL_malloc(HARDCODED_NUM_VERTICES * sizeof(TutorialVertex));
-    vec2 pos1 = {0.0f, -0.5f};
-    vec3 color1 = {1.0f, 0.0f, 0.0f};
-    vec2 pos2 = {0.5f, 0.5f};
+    vec2 pos1 = {-0.5f, -0.5f};
+    vec3 color1 = {1.0f, 1.0f, 1.0f};
+    vec2 pos2 = {0.5f, -0.5f};
     vec3 color2 = {0.0f, 1.0f, 0.0f};
-    vec2 pos3 = {-0.5f, 0.5f};
-    vec3 color3 = {0.0f, 0.0f, 1.0f};
+    vec2 pos3 = {0.5f, 0.5f};
+    vec3 color3 = {1.0f, 1.0f, 1.0f};
+    vec2 pos4 = {-0.5f, 0.5f};
+    vec3 color4 = {0.0f, 0.0f, 1.0f};
     painter->vertices[0].pos = pos1;
     painter->vertices[0].color = color1;
     painter->vertices[1].pos = pos2;
     painter->vertices[1].color = color2;
     painter->vertices[2].pos = pos3;
     painter->vertices[2].color = color3;
+    painter->vertices[3].pos = pos4;
+    painter->vertices[3].color = color4;
+    painter->indices = (Uint32*) SDL_malloc(HARDCODED_NUM_INDICES * sizeof(Uint32));
+    painter->indices[0] = 0;
+    painter->indices[1] = 1;
+    painter->indices[2] = 2;
+    painter->indices[3] = 2;
+    painter->indices[4] = 3;
+    painter->indices[5] = 0;
 
 #if DEBUG_BUILD==SDL_TRUE
     const Uint32 validation_layers_count = 1;
@@ -249,6 +262,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
 
 SDL_bool _painter_create_swapchain(EsPainter* painter) {
     VkResult result;
+    SDL_bool sdl_result;
 
     const Uint32 required_device_extensions_count = 1;
     const char** required_device_extensions = (char**) SDL_malloc(required_device_extensions_count * sizeof(char*));
@@ -834,69 +848,62 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         return SDL_FALSE;
     }
 
-    SDL_Log("Creating vertex buffer\n");
-    VkBufferCreateInfo vertex_buffer_create_info;
-    vertex_buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    vertex_buffer_create_info.pNext = NULL;
-    vertex_buffer_create_info.flags = 0;
-    vertex_buffer_create_info.size = sizeof(TutorialVertex) * HARDCODED_NUM_VERTICES;
-    vertex_buffer_create_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    vertex_buffer_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    vertex_buffer_create_info.queueFamilyIndexCount = 0;
-    vertex_buffer_create_info.pQueueFamilyIndices = NULL;
-
-    result = vkCreateBuffer(painter->device, &vertex_buffer_create_info, NULL, &painter->vertex_buffer);
+    painter->vertex_staging_buffer_size = HARDCODED_NUM_VERTICES * sizeof(TutorialVertex);
+    VkMemoryPropertyFlags vertex_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
+    // the offsets and things.
+    sdl_result = _painter_create_buffer(painter, painter->vertex_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, vertex_staging_property_flags, &painter->vertex_staging_buffer, &painter->vertex_staging_buffer_memory);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create staging buffer");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    void* staging_data;
+    result = vkMapMemory(painter->device, painter->vertex_staging_buffer_memory, 0, painter->vertex_staging_buffer_size, 0, &staging_data);
     if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not map staging buffer memory");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_memcpy(staging_data, painter->vertices, (size_t) painter->vertex_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->vertex_staging_buffer_memory);
+    painter->vertex_buffer_size = HARDCODED_NUM_VERTICES * sizeof(TutorialVertex);
+    VkMemoryPropertyFlags vertex_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    sdl_result = _painter_create_buffer(painter, painter->vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertex_property_flags, &painter->vertex_buffer, &painter->vertex_buffer_memory);
+    if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create vertex buffer");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    VkMemoryRequirements memory_requirements;
-    vkGetBufferMemoryRequirements(painter->device, painter->vertex_buffer, &memory_requirements);
-    Uint32 memory_type_index = UINT32_MAX;
-    VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
-    vkGetPhysicalDeviceMemoryProperties(painter->physical_device, &physical_device_memory_properties);
-    for (Uint32 i=0; i<physical_device_memory_properties.memoryTypeCount; i++) {
-        VkMemoryPropertyFlags property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        SDL_bool memory_is_suitable = memory_requirements.memoryTypeBits & (1<<i);
-        SDL_bool memory_has_properties = (physical_device_memory_properties.memoryTypes[i].propertyFlags & property_flags) == property_flags; 
-        if (memory_is_suitable && memory_has_properties) {
-            memory_type_index = i;
-            break;
-        }
-    }
-    if (memory_type_index == UINT32_MAX) {
-        warehouse_error_popup("Error in Vulkan Setup.", "Could not find suitable memory");
+
+    painter->index_staging_buffer_size = HARDCODED_NUM_INDICES * sizeof(Uint32);
+    VkMemoryPropertyFlags index_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
+    // the offsets and things.
+    sdl_result = _painter_create_buffer(painter, painter->index_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, index_staging_property_flags, &painter->index_staging_buffer, &painter->index_staging_buffer_memory);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create staging buffer");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    VkMemoryAllocateInfo memory_allocation_info;
-    memory_allocation_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    memory_allocation_info.pNext = NULL;
-    memory_allocation_info.allocationSize = memory_requirements.size;
-    memory_allocation_info.memoryTypeIndex = memory_type_index;
-    result = vkAllocateMemory(painter->device, &memory_allocation_info, NULL, &painter->vertex_buffer_memory);
+    void* index_staging_data;
+    result = vkMapMemory(painter->device, painter->index_staging_buffer_memory, 0, painter->index_staging_buffer_size, 0, &index_staging_data);
     if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Vulkan Setup.", "Could not allocate vertex buffer memory");
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not map staging buffer memory");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    result = vkBindBufferMemory(painter->device, painter->vertex_buffer, painter->vertex_buffer_memory, 0);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Vulkan Setup.", "Could not bind vertex buffer memory");
+    SDL_memcpy(index_staging_data, painter->indices, (size_t) painter->index_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->index_staging_buffer_memory);
+    painter->index_buffer_size = HARDCODED_NUM_INDICES * sizeof(Uint32);
+    VkMemoryPropertyFlags index_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    sdl_result = _painter_create_buffer(painter, painter->index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, index_property_flags, &painter->index_buffer, &painter->index_buffer_memory);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create index buffer");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
 
-    void* vertex_data;
-    result = vkMapMemory(painter->device, painter->vertex_buffer_memory, 0, vertex_buffer_create_info.size, 0, &vertex_data);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Vulkan Setup.", "Could not map vertex buffer memory");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    SDL_memcpy(vertex_data, painter->vertices, (size_t) vertex_buffer_create_info.size);
-    vkUnmapMemory(painter->device, painter->vertex_buffer_memory);
 
     painter->command_buffers = (VkCommandBuffer*) SDL_malloc(painter->swapchain_image_count * sizeof(VkCommandBuffer));
     VkCommandBufferAllocateInfo command_buffer_allocate_info;
@@ -923,6 +930,14 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
             painter_cleanup(painter);
             return SDL_FALSE;
         }
+        VkBufferCopy vertex_buffer_copy_info;
+        vertex_buffer_copy_info.srcOffset = 0;
+        vertex_buffer_copy_info.dstOffset = 0;
+        vertex_buffer_copy_info.size = painter->vertex_staging_buffer_size;
+        VkBufferCopy index_buffer_copy_info;
+        index_buffer_copy_info.srcOffset = 0;
+        index_buffer_copy_info.dstOffset = 0;
+        index_buffer_copy_info.size = painter->index_staging_buffer_size;
         VkRenderPassBeginInfo render_pass_begin_info;
         render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         render_pass_begin_info.pNext = NULL;
@@ -938,10 +953,13 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         vertex_buffers[0] = painter->vertex_buffer;
         VkDeviceSize offsets[1];
         offsets[0] = 0;
+        vkCmdCopyBuffer(painter->command_buffers[i], painter->vertex_staging_buffer, painter->vertex_buffer, 1, &vertex_buffer_copy_info);
+        vkCmdCopyBuffer(painter->command_buffers[i], painter->index_staging_buffer, painter->index_buffer, 1, &index_buffer_copy_info);
         vkCmdBeginRenderPass(painter->command_buffers[i], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->graphics_pipeline);
         vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
-        vkCmdDraw(painter->command_buffers[i], HARDCODED_NUM_VERTICES, 1, 0, 0);
+        vkCmdBindIndexBuffer(painter->command_buffers[i], painter->index_buffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdDrawIndexed(painter->command_buffers[i], HARDCODED_NUM_INDICES, 1, 0, 0, 0);
         vkCmdEndRenderPass(painter->command_buffers[i]);
         result = vkEndCommandBuffer(painter->command_buffers[i]);
         if (result != VK_SUCCESS) {
@@ -970,6 +988,29 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     Uint32 image_index;
     VkResult result;
     SDL_bool sdl_result;
+
+    // painter->vertices[0].color.x += 0.00001;
+    // painter->vertices[1].pos.x += 0.00001;
+    void* vertex_staging_data;
+    result = vkMapMemory(painter->device, painter->vertex_staging_buffer_memory, 0, painter->vertex_staging_buffer_size, 0, &vertex_staging_data);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Rendering.", "Could not map staging buffer memory");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_memcpy(vertex_staging_data, painter->vertices, (size_t) painter->vertex_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->vertex_staging_buffer_memory);
+
+    void* index_staging_data;
+    result = vkMapMemory(painter->device, painter->index_staging_buffer_memory, 0, painter->index_staging_buffer_size, 0, &index_staging_data);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Rendering.", "Could not map staging buffer memory");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_memcpy(index_staging_data, painter->indices, (size_t) painter->index_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->index_staging_buffer_memory);
+
 
     vkWaitForFences(painter->device, 1, &painter->in_flight_fences[painter->frame_index], VK_TRUE, UINT64_MAX);
     result = vkAcquireNextImageKHR(painter->device, painter->swapchain, UINT64_MAX, painter->image_available_semaphores[painter->frame_index], VK_NULL_HANDLE, &image_index);
@@ -1056,10 +1097,22 @@ void _painter_cleanup_swapchain(EsPainter* painter) {
 
 void painter_cleanup(EsPainter* painter) {
     _painter_cleanup_swapchain(painter);
+    if (painter->index_buffer)
+        vkDestroyBuffer(painter->device, painter->index_buffer, NULL);
+    if (painter->index_buffer_memory)
+        vkFreeMemory(painter->device, painter->index_buffer_memory, NULL);
+    if (painter->index_staging_buffer)
+        vkDestroyBuffer(painter->device, painter->index_staging_buffer, NULL);
+    if (painter->index_staging_buffer_memory)
+        vkFreeMemory(painter->device, painter->index_staging_buffer_memory, NULL);
     if (painter->vertex_buffer)
         vkDestroyBuffer(painter->device, painter->vertex_buffer, NULL);
     if (painter->vertex_buffer_memory)
         vkFreeMemory(painter->device, painter->vertex_buffer_memory, NULL);
+    if (painter->vertex_staging_buffer)
+        vkDestroyBuffer(painter->device, painter->vertex_staging_buffer, NULL);
+    if (painter->vertex_staging_buffer_memory)
+        vkFreeMemory(painter->device, painter->vertex_staging_buffer_memory, NULL);
     if (painter->in_flight_fences)
         for (Uint32 i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
             vkDestroyFence(painter->device, painter->in_flight_fences[i], NULL);
@@ -1131,3 +1184,60 @@ SDL_bool _painter_recreate_swapchain(EsPainter* painter) {
     }
     return SDL_TRUE;
 }
+
+SDL_bool _painter_create_buffer(EsPainter* painter, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags property_flags, VkBuffer* buffer, VkDeviceMemory* buffer_memory) {
+    VkResult result;
+    VkBufferCreateInfo buffer_create_info;
+    buffer_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buffer_create_info.pNext = NULL;
+    buffer_create_info.flags = 0;
+    buffer_create_info.size = size;
+    buffer_create_info.usage = usage;
+    buffer_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    buffer_create_info.queueFamilyIndexCount = 0;
+    buffer_create_info.pQueueFamilyIndices = NULL;
+    result = vkCreateBuffer(painter->device, &buffer_create_info, NULL, buffer);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create vertex buffer");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+
+    VkMemoryRequirements memory_requirements;
+    vkGetBufferMemoryRequirements(painter->device, *buffer, &memory_requirements);
+    Uint32 memory_type_index = UINT32_MAX;
+    VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
+    vkGetPhysicalDeviceMemoryProperties(painter->physical_device, &physical_device_memory_properties);
+    for (Uint32 i=0; i<physical_device_memory_properties.memoryTypeCount; i++) {
+        SDL_bool memory_is_suitable = memory_requirements.memoryTypeBits & (1<<i);
+        SDL_bool memory_has_properties = (physical_device_memory_properties.memoryTypes[i].propertyFlags & property_flags) == property_flags; 
+        if (memory_is_suitable && memory_has_properties) {
+            memory_type_index = i;
+            break;
+        }
+    }
+    if (memory_type_index == UINT32_MAX) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not find suitable memory");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    VkMemoryAllocateInfo memory_allocation_info;
+    memory_allocation_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memory_allocation_info.pNext = NULL;
+    memory_allocation_info.allocationSize = memory_requirements.size;
+    memory_allocation_info.memoryTypeIndex = memory_type_index;
+    result = vkAllocateMemory(painter->device, &memory_allocation_info, NULL, buffer_memory);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not allocate vertex buffer memory");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    result = vkBindBufferMemory(painter->device, *buffer, *buffer_memory, 0);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not bind vertex buffer memory");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    return SDL_TRUE;
+}
+

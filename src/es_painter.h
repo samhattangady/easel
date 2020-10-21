@@ -31,9 +31,20 @@ typedef struct {
     VkCommandBuffer* command_buffers;
     VkQueue graphics_queue;
     SDL_bool buffer_resized;
+    Uint32 vertex_buffer_size;
+    Uint32 vertex_staging_buffer_size;
+    Uint32 index_buffer_size;
+    Uint32 index_staging_buffer_size;
+    VkBuffer vertex_staging_buffer;
+    VkDeviceMemory vertex_staging_buffer_memory;
+    VkBuffer index_staging_buffer;
+    VkDeviceMemory index_staging_buffer_memory;
     VkBuffer vertex_buffer;
     VkDeviceMemory vertex_buffer_memory;
+    VkBuffer index_buffer;
+    VkDeviceMemory index_buffer_memory;
     TutorialVertex* vertices;
+    Uint32* indices;
 } EsPainter;
 
 extern SDL_bool painter_initialise(EsPainter* painter);
