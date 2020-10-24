@@ -13,13 +13,27 @@
 typedef struct {
     float x;
     float y;
+} vec2;
+
+typedef struct {
+    float x;
+    float y;
     float z;
 } vec3;
 
 typedef struct {
     float x;
     float y;
-} vec2;
+    float z;
+    float w;
+} vec4;
+
+typedef struct {
+    vec4 a;
+    vec4 b;
+    vec4 c;
+    vec4 d;
+} mat4;
 
 typedef struct {
     vec2 pos;

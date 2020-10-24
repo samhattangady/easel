@@ -7,6 +7,12 @@
 #include "es_warehouse.h"
 
 typedef struct {
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+} UniformBufferObject;
+
+typedef struct {
     SDL_Window* window;
     VkInstance instance;
     VkSurfaceKHR surface;
@@ -18,6 +24,7 @@ typedef struct {
     VkImageView* swapchain_image_views;
     VkShaderModule vertex_shader_module;
     VkShaderModule fragment_shader_module;
+    VkDescriptorSetLayout descriptor_set_layout;
     VkPipelineLayout pipeline_layout;
     VkRenderPass render_pass;
     VkPipeline graphics_pipeline;
@@ -35,6 +42,7 @@ typedef struct {
     Uint32 vertex_staging_buffer_size;
     Uint32 index_buffer_size;
     Uint32 index_staging_buffer_size;
+    Uint32 uniform_buffer_size;
     VkBuffer vertex_staging_buffer;
     VkDeviceMemory vertex_staging_buffer_memory;
     VkBuffer index_staging_buffer;
@@ -43,8 +51,14 @@ typedef struct {
     VkDeviceMemory vertex_buffer_memory;
     VkBuffer index_buffer;
     VkDeviceMemory index_buffer_memory;
+    VkBuffer* uniform_buffers;
+    VkDeviceMemory* uniform_buffers_memory;
+    VkDescriptorPool descriptor_pool;
+    VkDescriptorSet* descriptor_sets;
     TutorialVertex* vertices;
     Uint32* indices;
+    UniformBufferObject uniform_buffer_object;
+    Uint32 start_time;
 } EsPainter;
 
 extern SDL_bool painter_initialise(EsPainter* painter);

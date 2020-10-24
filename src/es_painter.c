@@ -25,6 +25,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
         return SDL_FALSE;
     }
     painter->window = window;
+    painter->start_time = SDL_GetTicks();
 
     VkResult result;
     VkApplicationInfo app_info;
@@ -61,6 +62,57 @@ SDL_bool painter_initialise(EsPainter* painter) {
     painter->indices[3] = 2;
     painter->indices[4] = 3;
     painter->indices[5] = 0;
+
+    painter->uniform_buffer_object.model.a.x = 1.0;
+    painter->uniform_buffer_object.model.a.y = 0.0;
+    painter->uniform_buffer_object.model.a.z = 0.0;
+    painter->uniform_buffer_object.model.a.w = 0.0;
+    painter->uniform_buffer_object.model.b.x = 0.0;
+    painter->uniform_buffer_object.model.b.y = 1.0;
+    painter->uniform_buffer_object.model.b.z = 0.0;
+    painter->uniform_buffer_object.model.b.w = 0.0;
+    painter->uniform_buffer_object.model.c.x = 0.0;
+    painter->uniform_buffer_object.model.c.y = 0.0;
+    painter->uniform_buffer_object.model.c.z = 1.0;
+    painter->uniform_buffer_object.model.c.w = 0.0;
+    painter->uniform_buffer_object.model.d.x = 0.0;
+    painter->uniform_buffer_object.model.d.y = 0.0;
+    painter->uniform_buffer_object.model.d.z = 0.0;
+    painter->uniform_buffer_object.model.d.w = 1.0;
+
+    painter->uniform_buffer_object.view.a.x = -0.707107;
+    painter->uniform_buffer_object.view.a.y = -0.408248;
+    painter->uniform_buffer_object.view.a.z = 0.577350;
+    painter->uniform_buffer_object.view.a.w = 0.000000;
+    painter->uniform_buffer_object.view.b.x = 0.707107;
+    painter->uniform_buffer_object.view.b.y = -0.408248;
+    painter->uniform_buffer_object.view.b.z = 0.577350;
+    painter->uniform_buffer_object.view.b.w = 0.000000;
+    painter->uniform_buffer_object.view.c.x = 0.000000;
+    painter->uniform_buffer_object.view.c.y = 0.816497;
+    painter->uniform_buffer_object.view.c.z = 0.577350;
+    painter->uniform_buffer_object.view.c.w = 0.000000;
+    painter->uniform_buffer_object.view.d.x = -0.000000;
+    painter->uniform_buffer_object.view.d.y = -0.000000;
+    painter->uniform_buffer_object.view.d.z = -3.464102;
+    painter->uniform_buffer_object.view.d.w = 1.000000;
+
+    painter->uniform_buffer_object.proj.a.x = 3.218951;
+    painter->uniform_buffer_object.proj.a.y = 0.000000;
+    painter->uniform_buffer_object.proj.a.z = 0.000000;
+    painter->uniform_buffer_object.proj.a.w = 0.000000;
+    painter->uniform_buffer_object.proj.b.x = 0.000000;
+    painter->uniform_buffer_object.proj.b.y = -2.414213;
+    painter->uniform_buffer_object.proj.b.z = 0.000000;
+    painter->uniform_buffer_object.proj.b.w = 0.000000;
+    painter->uniform_buffer_object.proj.c.x = 0.000000;
+    painter->uniform_buffer_object.proj.c.y = 0.000000;
+    painter->uniform_buffer_object.proj.c.z = -1.020202;
+    painter->uniform_buffer_object.proj.c.w = -1.000000;
+    painter->uniform_buffer_object.proj.d.x = 0.000000;
+    painter->uniform_buffer_object.proj.d.y = 0.000000;
+    painter->uniform_buffer_object.proj.d.z = -0.202020;
+    painter->uniform_buffer_object.proj.d.w = 0.000000;
 
 #if DEBUG_BUILD==SDL_TRUE
     const Uint32 validation_layers_count = 1;
@@ -661,6 +713,25 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         return SDL_FALSE;
     }
 
+    VkDescriptorSetLayoutBinding ubo_layout_binding;
+    ubo_layout_binding.binding = 0;
+    ubo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ubo_layout_binding.descriptorCount = 1;
+    ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    ubo_layout_binding.pImmutableSamplers = NULL;
+    VkDescriptorSetLayoutCreateInfo descriptor_set_layout_create_info;
+    descriptor_set_layout_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    descriptor_set_layout_create_info.pNext = NULL;
+    descriptor_set_layout_create_info.flags = 0;
+    descriptor_set_layout_create_info.bindingCount = 1;
+    descriptor_set_layout_create_info.pBindings = &ubo_layout_binding;
+    result = vkCreateDescriptorSetLayout(painter->device, &descriptor_set_layout_create_info, NULL, &painter->descriptor_set_layout);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create descriptor set layout.");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+
     SDL_Log("Describing vertex bindings\n");
     VkVertexInputBindingDescription vertex_input_binding_description;
     vertex_input_binding_description.binding = 0;
@@ -735,7 +806,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     rasterization_state_create_info.rasterizerDiscardEnable = VK_FALSE;
     rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_FILL;
     rasterization_state_create_info.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterization_state_create_info.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterization_state_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterization_state_create_info.depthBiasEnable = VK_FALSE;
     rasterization_state_create_info.depthBiasConstantFactor = 0.0f;
     rasterization_state_create_info.depthBiasClamp = 0.0f;
@@ -776,8 +847,8 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipeline_layout_create_info.pNext = NULL;
     pipeline_layout_create_info.flags = 0;
-    pipeline_layout_create_info.setLayoutCount = 0;
-    pipeline_layout_create_info.pSetLayouts = NULL;
+    pipeline_layout_create_info.setLayoutCount = 1;
+    pipeline_layout_create_info.pSetLayouts = &painter->descriptor_set_layout;
     pipeline_layout_create_info.pushConstantRangeCount = 0;
     pipeline_layout_create_info.pPushConstantRanges = NULL;
     result = vkCreatePipelineLayout(painter->device, &pipeline_layout_create_info, NULL, &painter->pipeline_layout);
@@ -904,6 +975,68 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         return SDL_FALSE;
     }
 
+    painter->uniform_buffer_size = sizeof(UniformBufferObject);
+    painter->uniform_buffers = (VkBuffer*) SDL_malloc(painter->swapchain_image_count * sizeof(VkBuffer));
+    painter->uniform_buffers_memory = (VkDeviceMemory*) SDL_malloc(painter->swapchain_image_count * sizeof(VkDeviceMemory));
+    for (Uint32 i=0; i<painter->swapchain_image_count; i++) {
+        sdl_result = _painter_create_buffer(painter, painter->uniform_buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &painter->uniform_buffers[i], &painter->uniform_buffers_memory[i]);
+        if (!sdl_result) {
+            warehouse_error_popup("Error in Vulkan Setup.", "Could not create uniform buffer");
+            painter_cleanup(painter);
+            return SDL_FALSE;
+        }
+    }
+
+    VkDescriptorPoolSize descriptor_pool_size;
+    descriptor_pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptor_pool_size.descriptorCount = painter->swapchain_image_count;
+    VkDescriptorPoolCreateInfo descriptor_pool_info;
+    descriptor_pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    descriptor_pool_info.pNext = NULL;
+    descriptor_pool_info.flags = 0;
+    descriptor_pool_info.maxSets = painter->swapchain_image_count;
+    descriptor_pool_info.poolSizeCount = 1;
+    descriptor_pool_info.pPoolSizes = &descriptor_pool_size;
+    result = vkCreateDescriptorPool(painter->device, &descriptor_pool_info, NULL, &painter->descriptor_pool);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create descriptor pool");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    VkDescriptorSetLayout* layouts = (VkDescriptorSetLayout*) SDL_malloc(painter->swapchain_image_count * sizeof(VkDescriptorSetLayout));
+    for (Uint32 i=0; i<painter->swapchain_image_count; i++)
+        layouts[i] = painter->descriptor_set_layout;
+    painter->descriptor_sets = (VkDescriptorSet*) SDL_malloc(painter->swapchain_image_count * sizeof(VkDescriptorSet));
+    VkDescriptorSetAllocateInfo descriptor_set_alloc_info;
+    descriptor_set_alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    descriptor_set_alloc_info.pNext = NULL;
+    descriptor_set_alloc_info.descriptorPool = painter->descriptor_pool;
+    descriptor_set_alloc_info.descriptorSetCount = painter->swapchain_image_count;
+    descriptor_set_alloc_info.pSetLayouts = layouts;
+    result = vkAllocateDescriptorSets(painter->device, &descriptor_set_alloc_info, painter->descriptor_sets);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not allocate descriptor sets");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    for (Uint32 i=0; i<painter->swapchain_image_count; i++) {
+        VkDescriptorBufferInfo buffer_info;
+        buffer_info.buffer = painter->uniform_buffers[i];
+        buffer_info.offset = 0;
+        buffer_info.range = painter->uniform_buffer_size;
+        VkWriteDescriptorSet descriptor_write;
+        descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptor_write.pNext = NULL;
+        descriptor_write.dstSet = painter->descriptor_sets[i];
+        descriptor_write.dstBinding = 0;
+        descriptor_write.dstArrayElement = 0;
+        descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptor_write.descriptorCount = 1;
+        descriptor_write.pBufferInfo = &buffer_info;
+        descriptor_write.pImageInfo = NULL;
+        descriptor_write.pTexelBufferView = NULL;
+        vkUpdateDescriptorSets(painter->device, 1, &descriptor_write, 0, NULL);
+    }
 
     painter->command_buffers = (VkCommandBuffer*) SDL_malloc(painter->swapchain_image_count * sizeof(VkCommandBuffer));
     VkCommandBufferAllocateInfo command_buffer_allocate_info;
@@ -959,6 +1092,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->graphics_pipeline);
         vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
         vkCmdBindIndexBuffer(painter->command_buffers[i], painter->index_buffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->pipeline_layout, 0, 1, &painter->descriptor_sets[i], 0, NULL);
         vkCmdDrawIndexed(painter->command_buffers[i], HARDCODED_NUM_INDICES, 1, 0, 0, 0);
         vkCmdEndRenderPass(painter->command_buffers[i]);
         result = vkEndCommandBuffer(painter->command_buffers[i]);
@@ -1011,7 +1145,6 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     SDL_memcpy(index_staging_data, painter->indices, (size_t) painter->index_staging_buffer_size);
     vkUnmapMemory(painter->device, painter->index_staging_buffer_memory);
 
-
     vkWaitForFences(painter->device, 1, &painter->in_flight_fences[painter->frame_index], VK_TRUE, UINT64_MAX);
     result = vkAcquireNextImageKHR(painter->device, painter->swapchain, UINT64_MAX, painter->image_available_semaphores[painter->frame_index], VK_NULL_HANDLE, &image_index);
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || painter->buffer_resized) {
@@ -1025,6 +1158,17 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
         painter_cleanup(painter);
         return SDL_FALSE;
     }
+
+    void* uniform_data;
+    result = vkMapMemory(painter->device, painter->uniform_buffers_memory[image_index], 0, painter->uniform_buffer_size, 0, &uniform_data);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Rendering.", "Could not map uniform memory");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_memcpy(uniform_data, &painter->uniform_buffer_object, (size_t) painter->uniform_buffer_size);
+    vkUnmapMemory(painter->device, painter->uniform_buffers_memory[image_index]);
+
     if (painter->images_in_flight[image_index] != VK_NULL_HANDLE)
         vkWaitForFences(painter->device, 1, &painter->images_in_flight[image_index], VK_TRUE, UINT64_MAX);
     painter->images_in_flight[image_index] = painter->in_flight_fences[painter->frame_index];
@@ -1082,6 +1226,8 @@ void _painter_cleanup_swapchain(EsPainter* painter) {
         vkFreeCommandBuffers(painter->device, painter->command_pool, painter->swapchain_image_count, painter->command_buffers);
     if (painter->graphics_pipeline)
         vkDestroyPipeline(painter->device, painter->graphics_pipeline, NULL);
+    if (painter->descriptor_set_layout)
+        vkDestroyDescriptorSetLayout(painter->device, painter->descriptor_set_layout, NULL);
     if (painter->pipeline_layout)
         vkDestroyPipelineLayout(painter->device, painter->pipeline_layout, NULL);
     if (painter->render_pass)
@@ -1097,6 +1243,14 @@ void _painter_cleanup_swapchain(EsPainter* painter) {
 
 void painter_cleanup(EsPainter* painter) {
     _painter_cleanup_swapchain(painter);
+    if (painter->uniform_buffers)
+        for (Uint32 i=0; i<painter->swapchain_image_count; i++)
+            vkDestroyBuffer(painter->device, painter->uniform_buffers[i], NULL);
+    if (painter->uniform_buffers_memory)
+        for (Uint32 i=0; i<painter->swapchain_image_count; i++)
+            vkFreeMemory(painter->device, painter->uniform_buffers_memory[i], NULL);
+    if (painter->descriptor_pool)
+        vkDestroyDescriptorPool(painter->device, painter->descriptor_pool, NULL);
     if (painter->index_buffer)
         vkDestroyBuffer(painter->device, painter->index_buffer, NULL);
     if (painter->index_buffer_memory)
@@ -1141,6 +1295,8 @@ void painter_cleanup(EsPainter* painter) {
     SDL_free(painter->command_buffers);
     SDL_free(painter->swapchain_image_views);
     SDL_free(painter->swapchain_framebuffers);
+    SDL_free(painter->uniform_buffers);
+    SDL_free(painter->uniform_buffers_memory);
     SDL_Quit();
 }
 
