@@ -116,7 +116,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
 
 #if DEBUG_BUILD==SDL_TRUE
     const Uint32 validation_layers_count = 1;
-    const char** validation_layers = (char**) SDL_malloc(validation_layers_count * sizeof(char*));
+    const char** validation_layers = (const char**) SDL_malloc(validation_layers_count * sizeof(char*));
     validation_layers[0] =  "VK_LAYER_KHRONOS_validation";
     Uint32 layer_count;
     result = vkEnumerateInstanceLayerProperties(&layer_count, NULL);
@@ -164,7 +164,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    required_extensions = (char**) SDL_malloc(required_extensions_count * sizeof(char*));
+    required_extensions = (const char**) SDL_malloc(required_extensions_count * sizeof(char*));
     sdl_result = SDL_Vulkan_GetInstanceExtensions(painter->window, &required_extensions_count, required_extensions);
     if (!sdl_result) {
         warehouse_error_popup("Error in getting Required Vulkan Extensions", SDL_GetError());
@@ -317,7 +317,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     SDL_bool sdl_result;
 
     const Uint32 required_device_extensions_count = 1;
-    const char** required_device_extensions = (char**) SDL_malloc(required_device_extensions_count * sizeof(char*));
+    const char** required_device_extensions = (const char**) SDL_malloc(required_device_extensions_count * sizeof(char*));
     required_device_extensions[0] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
     Uint32 device_extensions_count;
     result = vkEnumerateDeviceExtensionProperties(painter->physical_device, NULL, &device_extensions_count, NULL);
@@ -469,7 +469,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
 
 #if DEBUG_BUILD==SDL_TRUE
     const Uint32 validation_layers_count = 1;
-    const char** validation_layers = (char**) SDL_malloc(validation_layers_count * sizeof(char*));
+    const char** validation_layers = (const char**) SDL_malloc(validation_layers_count * sizeof(char*));
     validation_layers[0] =  "VK_LAYER_KHRONOS_validation";
     Uint32 layer_count;
     result = vkEnumerateInstanceLayerProperties(&layer_count, NULL);
