@@ -38,6 +38,7 @@ typedef struct {
 typedef struct {
     vec2 pos;
     vec3 color;
+    vec2 tex;
 } TutorialVertex;
 
 extern void warehouse_error_popup(const char* error_header, const char* error_text);

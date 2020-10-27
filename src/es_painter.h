@@ -53,8 +53,12 @@ typedef struct {
     VkDeviceMemory index_buffer_memory;
     VkBuffer* uniform_buffers;
     VkDeviceMemory* uniform_buffers_memory;
+    VkImage texture_image;
+    VkDeviceMemory texture_image_memory;
     VkDescriptorPool descriptor_pool;
     VkDescriptorSet* descriptor_sets;
+    VkImageView texture_image_view;
+    VkSampler texture_sampler;
     TutorialVertex* vertices;
     Uint32* indices;
     UniformBufferObject uniform_buffer_object;
