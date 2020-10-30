@@ -59,6 +59,9 @@ typedef struct {
     VkDescriptorSet* descriptor_sets;
     VkImageView texture_image_view;
     VkSampler texture_sampler;
+    VkImage depth_image;
+    VkDeviceMemory depth_image_memory;
+    VkImageView depth_image_view;
     TutorialVertex* vertices;
     Uint32* indices;
     UniformBufferObject uniform_buffer_object;
