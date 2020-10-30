@@ -3,9 +3,13 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#define TINYOBJ_LOADER_C_IMPLEMENTATION
+#include "tinyobj_loader_c.h"
 
 #define HARDCODED_NUM_VERTICES 8
 #define HARDCODED_NUM_INDICES 12
+#define MODEL_PATH "data/obj/viking_room.obj"
+#define MODEL_TEXTURE_PATH "data/img/viking_room.png"
 
 void _painter_cleanup_swapchain(EsPainter* painter);
 SDL_bool _painter_create_swapchain(EsPainter* painter);
@@ -17,6 +21,54 @@ SDL_bool _painter_copy_buffer_to_image(EsPainter* painter, VkBuffer* buffer, VkI
 SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory);
 SDL_bool _painter_create_image_view(EsPainter* painter, VkFormat format, VkImageAspectFlags aspect_flags, VkImage* image, VkImageView* image_view);
 
+static void _painter_read_obj_file(const char* filename, const int is_mtl, const char *obj_filename, char** data, size_t* len) {
+    obj_filename;
+    if (is_mtl == 1) {
+        SDL_Log("We currently don't load mtl files\n");
+        *data = NULL;
+        *len = 0;
+        return;
+    }
+    SDL_RWops* obj_file;
+    obj_file = SDL_RWFromFile(filename, "rb");
+    Sint64 file_size;
+    size_t read_size;
+    Sint64 result;
+    if (obj_file == NULL) {
+        *data = NULL;
+        *len = 0;
+        return;
+    }
+    SDL_Log("obj file is not null\n");
+    file_size = SDL_RWseek(obj_file, 0, RW_SEEK_END);
+    if (file_size < 0) {
+        SDL_RWclose(obj_file);
+        *data = NULL;
+        *len = 0;
+        return;
+    }
+    SDL_Log("file size is not < 0\n");
+    result = SDL_RWseek(obj_file, 0, RW_SEEK_SET);
+    if (result < 0) {
+        SDL_RWclose(obj_file);
+        *data = NULL;
+        *len = 0;
+        return;
+    }
+    char* temp_buffer = (char*) SDL_malloc(file_size * sizeof(char));
+    read_size = SDL_RWread(obj_file, temp_buffer, sizeof(char), file_size);
+    if ((Sint64)(read_size*sizeof(char)) != file_size) {
+        SDL_free(temp_buffer);
+        SDL_RWclose(obj_file);
+        *data = NULL;
+        *len = 0;
+        return;
+    }
+    SDL_RWclose(obj_file);
+    *data = temp_buffer;
+    *len = read_size;
+    return;
+}
 
 SDL_bool painter_initialise(EsPainter* painter) {
     int init_success = SDL_Init(SDL_INIT_VIDEO);
@@ -27,7 +79,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
     }
     SDL_Window* window;
     window = SDL_CreateWindow("Easel", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                              1024, 768, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
+                              800, 600, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
     if (window == NULL) {
         warehouse_error_popup("Error in SDL Window Creation.", SDL_GetError());
         painter_cleanup(painter);
@@ -47,68 +99,53 @@ SDL_bool painter_initialise(EsPainter* painter) {
     app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
     app_info.apiVersion = VK_API_VERSION_1_0;
 
-    painter->vertices = (TutorialVertex*) SDL_malloc(HARDCODED_NUM_VERTICES * sizeof(TutorialVertex));
-    vec3 pos1 = {-0.5f, -0.5f, 0.0f};
-    vec3 color1 = {1.0f, 1.0f, 1.0f};
-    vec2 tex1 = {0.0f, 0.0f};
-    vec3 pos2 = {0.5f, -0.5f, 0.0f};
-    vec3 color2 = {0.0f, 1.0f, 0.0f};
-    vec2 tex2 = {1.0f, 0.0f};
-    vec3 pos3 = {0.5f, 0.5f, 0.0f};
-    vec3 color3 = {1.0f, 1.0f, 1.0f};
-    vec2 tex3 = {1.0f, 1.0f};
-    vec3 pos4 = {-0.5f, 0.5f, 0.0f};
-    vec3 color4 = {0.0f, 0.0f, 1.0f};
-    vec2 tex4 = {0.0f, 1.0f};
-    painter->vertices[0].pos = pos1;
-    painter->vertices[0].color = color1;
-    painter->vertices[0].tex = tex1;
-    painter->vertices[1].pos = pos2;
-    painter->vertices[1].color = color2;
-    painter->vertices[1].tex = tex2;
-    painter->vertices[2].pos = pos3;
-    painter->vertices[2].color = color3;
-    painter->vertices[2].tex = tex3;
-    painter->vertices[3].pos = pos4;
-    painter->vertices[3].color = color4;
-    painter->vertices[3].tex = tex4;
-    vec3 pos5 = {-0.5f, -0.5f, 2.5f};
-    vec3 color5 = {1.0f, 1.0f, 1.0f};
-    vec2 tex5 = {0.0f, 0.0f};
-    vec3 pos6 = {0.5f, -0.5f, 2.5f};
-    vec3 color6 = {0.0f, 1.0f, 0.0f};
-    vec2 tex6 = {1.0f, 0.0f};
-    vec3 pos7 = {1.5f, 1.1f, 2.5f};
-    vec3 color7 = {1.0f, 1.0f, 1.0f};
-    vec2 tex7 = {1.0f, 1.0f};
-    vec3 pos8 = {-0.5f, 0.1f, 2.5f};
-    vec3 color8 = {0.0f, 0.0f, 1.0f};
-    vec2 tex8 = {0.0f, 1.0f};
-    painter->vertices[4].pos = pos5;
-    painter->vertices[4].color = color5;
-    painter->vertices[4].tex = tex5;
-    painter->vertices[5].pos = pos6;
-    painter->vertices[5].color = color6;
-    painter->vertices[5].tex = tex6;
-    painter->vertices[6].pos = pos7;
-    painter->vertices[6].color = color7;
-    painter->vertices[6].tex = tex7;
-    painter->vertices[7].pos = pos8;
-    painter->vertices[7].color = color8;
-    painter->vertices[7].tex = tex8;
-    painter->indices = (Uint32*) SDL_malloc(HARDCODED_NUM_INDICES * sizeof(Uint32));
-    painter->indices[0] = 0;
-    painter->indices[1] = 1;
-    painter->indices[2] = 2;
-    painter->indices[3] = 2;
-    painter->indices[4] = 3;
-    painter->indices[5] = 0;
-    painter->indices[6] = 4;
-    painter->indices[7] = 5;
-    painter->indices[8] = 6;
-    painter->indices[9] = 6;
-    painter->indices[10] = 7;
-    painter->indices[11] = 4;
+    tinyobj_attrib_t attrib;
+    tinyobj_shape_t* shapes = NULL;
+    size_t num_shapes;
+    tinyobj_material_t* materials = NULL;
+    size_t num_materials;
+
+    Uint32 flags = TINYOBJ_FLAG_TRIANGULATE;
+    int ret = tinyobj_parse_obj(&attrib, &shapes, &num_shapes, &materials,
+                                &num_materials, MODEL_PATH, _painter_read_obj_file, flags);
+    if (ret != TINYOBJ_SUCCESS) {
+        warehouse_error_popup("Error in Setup.", "Could not load model");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+
+    painter->num_vertices = attrib.num_vertices;
+    painter->vertices = (TutorialVertex*) SDL_malloc(painter->num_vertices * sizeof(TutorialVertex));
+    painter->num_indices = attrib.num_faces;
+    painter->indices = (Uint32*) SDL_malloc(painter->num_indices * sizeof(Uint32));
+    if (num_shapes != 1) {
+        warehouse_error_popup("Error in Setup.", "Currently only support obj with 1 shape");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_Log("texcoords = %i\tvertices = %i\n", attrib.num_texcoords, attrib.num_vertices);
+    if (attrib.num_texcoords != attrib.num_vertices) {
+        warehouse_error_popup("Error in Setup.", "Currently only supporting obj with vertices=texcoords");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    for (Uint32 i=0; i<attrib.num_vertices; i++) {
+        TutorialVertex vert;
+        vert.pos.x = attrib.vertices[i*3 + 0];
+        vert.pos.y = attrib.vertices[i*3 + 1];
+        vert.pos.z = attrib.vertices[i*3 + 2];
+        vert.color.x = 0.0f;
+        vert.color.y = 0.0f;
+        vert.color.z = 0.0f;
+        painter->vertices[i] = vert;
+    }
+    for (Uint32 i=0; i<attrib.num_faces; i++) {
+        tinyobj_vertex_index_t face = attrib.faces[i];
+        // SDL_Log("face %i: %i %i\n", i, face.v_idx*3, face.vt_idx*2);
+        painter->indices[i] = face.v_idx;
+        painter->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
+        painter->vertices[face.v_idx].tex.y = 1.0f - attrib.texcoords[face.vt_idx*2 + 1];
+    }
 
     painter->uniform_buffer_object.model.a.x = 1.0f;
     painter->uniform_buffer_object.model.a.y = 0.0f;
@@ -675,6 +712,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         }
     }
     // Find Supported Format for Depth Buffer
+    // TODO (30 Oct 2020 sam): The depth_buffer stuff needs to be recreated on window resize
     VkFormat desired_formats[] = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
     VkFormat depth_buffer_format = VK_FORMAT_UNDEFINED;
     VkImageTiling depth_image_tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -1063,7 +1101,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     int tex_width;
     int tex_height;
     int tex_channels;
-    stbi_uc* pixels = stbi_load("data/img/texture1.jpg", &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+    stbi_uc* pixels = stbi_load(MODEL_TEXTURE_PATH, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
     if (!pixels) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not load texture");
         painter_cleanup(painter);
@@ -1133,7 +1171,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     }
 
 
-    painter->vertex_staging_buffer_size = HARDCODED_NUM_VERTICES * sizeof(TutorialVertex);
+    painter->vertex_staging_buffer_size = painter->num_vertices * sizeof(TutorialVertex);
     VkMemoryPropertyFlags vertex_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
     // the offsets and things.
@@ -1152,7 +1190,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     }
     SDL_memcpy(staging_data, painter->vertices, (size_t) painter->vertex_staging_buffer_size);
     vkUnmapMemory(painter->device, painter->vertex_staging_buffer_memory);
-    painter->vertex_buffer_size = HARDCODED_NUM_VERTICES * sizeof(TutorialVertex);
+    painter->vertex_buffer_size = painter->num_vertices * sizeof(TutorialVertex);
     VkMemoryPropertyFlags vertex_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     sdl_result = _painter_create_buffer(painter, painter->vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertex_property_flags, &painter->vertex_buffer, &painter->vertex_buffer_memory);
     if (!sdl_result) {
@@ -1161,7 +1199,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         return SDL_FALSE;
     }
 
-    painter->index_staging_buffer_size = HARDCODED_NUM_INDICES * sizeof(Uint32);
+    painter->index_staging_buffer_size = painter->num_indices * sizeof(Uint32);
     VkMemoryPropertyFlags index_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
     // the offsets and things.
@@ -1180,7 +1218,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     }
     SDL_memcpy(index_staging_data, painter->indices, (size_t) painter->index_staging_buffer_size);
     vkUnmapMemory(painter->device, painter->index_staging_buffer_memory);
-    painter->index_buffer_size = HARDCODED_NUM_INDICES * sizeof(Uint32);
+    painter->index_buffer_size = painter->num_indices * sizeof(Uint32);
     VkMemoryPropertyFlags index_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     sdl_result = _painter_create_buffer(painter, painter->index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, index_property_flags, &painter->index_buffer, &painter->index_buffer_memory);
     if (!sdl_result) {
@@ -1332,7 +1370,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
         vkCmdBindIndexBuffer(painter->command_buffers[i], painter->index_buffer, 0, VK_INDEX_TYPE_UINT32);
         vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->pipeline_layout, 0, 1, &painter->descriptor_sets[i], 0, NULL);
-        vkCmdDrawIndexed(painter->command_buffers[i], HARDCODED_NUM_INDICES, 1, 0, 0, 0);
+        vkCmdDrawIndexed(painter->command_buffers[i], painter->num_indices, 1, 0, 0, 0);
         vkCmdEndRenderPass(painter->command_buffers[i]);
         result = vkEndCommandBuffer(painter->command_buffers[i]);
         if (result != VK_SUCCESS) {

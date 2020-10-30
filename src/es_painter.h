@@ -66,6 +66,8 @@ typedef struct {
     Uint32* indices;
     UniformBufferObject uniform_buffer_object;
     Uint32 start_time;
+    Uint32 num_vertices;
+    Uint32 num_indices;
 } EsPainter;
 
 extern SDL_bool painter_initialise(EsPainter* painter);
