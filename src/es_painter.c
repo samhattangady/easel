@@ -152,27 +152,11 @@ SDL_bool painter_initialise(EsPainter* painter) {
     tinyobj_materials_free(materials, num_materials);
 
     painter->uniform_buffer_object.model = identity_mat4();
-    painter->distance = 2.0f;
-    vec3 eye = build_vec3(2.0f, 2.0f, 2.0f);
+    painter->camera_position = build_vec3(2.0f, 2.0f, 2.0f);
+    painter->camera_fov = 5.0f;
     vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
-    painter->uniform_buffer_object.view = look_at_z(eye, target);
-
-    painter->uniform_buffer_object.proj.a.x = 3.218951f;
-    painter->uniform_buffer_object.proj.a.y = 0.000000f;
-    painter->uniform_buffer_object.proj.a.z = 0.000000f;
-    painter->uniform_buffer_object.proj.a.w = 0.000000f;
-    painter->uniform_buffer_object.proj.b.x = 0.000000f;
-    painter->uniform_buffer_object.proj.b.y = -2.414213f;
-    painter->uniform_buffer_object.proj.b.z = 0.000000f;
-    painter->uniform_buffer_object.proj.b.w = 0.000000f;
-    painter->uniform_buffer_object.proj.c.x = 0.000000f;
-    painter->uniform_buffer_object.proj.c.y = 0.000000f;
-    painter->uniform_buffer_object.proj.c.z = -1.020202f;
-    painter->uniform_buffer_object.proj.c.w = -1.000000f;
-    painter->uniform_buffer_object.proj.d.x = 0.000000f;
-    painter->uniform_buffer_object.proj.d.y = 0.000000f;
-    painter->uniform_buffer_object.proj.d.z = -0.202020f;
-    painter->uniform_buffer_object.proj.d.w = 0.000000f;
+    painter->uniform_buffer_object.view = look_at_z(painter->camera_position, target);
+    painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 10.0f);
 
 #if DEBUG_BUILD==SDL_TRUE
     const Uint32 validation_layers_count = 1;
@@ -1450,10 +1434,11 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
         return SDL_FALSE;
     }
 
-    painter->distance += 0.0002f;
-    vec3 eye = build_vec3(painter->distance, painter->distance, painter->distance);
     vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
-    painter->uniform_buffer_object.view = look_at_z(eye, target);
+    // painter->camera_fov += 0.001f;
+    // painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 10.0f);
+    // painter->camera_position = rotate_about_origin_axis(painter->camera_position, 0.001, build_vec3(1.0f, 1.0f, 1.2f));
+    painter->uniform_buffer_object.view = look_at_z(painter->camera_position, target);
     void* uniform_data;
     result = vkMapMemory(painter->device, painter->uniform_buffers_memory[image_index], 0, painter->uniform_buffer_size, 0, &uniform_data);
     if (result != VK_SUCCESS) {

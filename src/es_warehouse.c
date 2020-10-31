@@ -1,7 +1,8 @@
 #include "es_warehouse.h"
+#define PI 3.141592653589793238
 
 float warehouse_log_2(float num) {
-    return SDL_log(num) / SDL_log(2);
+    return (float) SDL_log(num) / (float) SDL_log(2);
 }
 void warehouse_error_popup(const char* error_header, const char* error_text) {
     SDL_LogError(SDL_LOG_CATEGORY_ERROR, error_text);
@@ -40,7 +41,7 @@ vec4 mat4_vec4_multiply(mat4 a, vec4 b) {
 }
 
 void print_mat4(mat4 a) {
-    SDL_Log("%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n",
+    SDL_Log("\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n%f %f %f %f\n",
             a.a.x, a.a.y, a.a.z, a.a.w,
             a.b.x, a.b.y, a.b.z, a.b.w,
             a.c.x, a.c.y, a.c.z, a.c.w,
@@ -49,7 +50,7 @@ void print_mat4(mat4 a) {
 }
 
 void print_vec4(vec4 a) {
-    SDL_Log("%f\n%f\n%f\n%f\n",
+    SDL_Log("\n%f\n%f\n%f\n%f\n",
             a.x, a.y, a.z, a.w);
     return;
 }
@@ -156,7 +157,7 @@ vec3 vec3_normalize(vec3 a) {
 }
 
 float vec3_magnitude(vec3 a) {
-    return SDL_sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
+    return (float) SDL_sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
 }
 
 vec3 build_vec3(float x, float y, float z) {
@@ -167,43 +168,65 @@ vec3 build_vec3(float x, float y, float z) {
     return result;
 }
 
+vec3 rotate_about_origin_axis(vec3 point, float angle, vec3 axis) {
+    float cosa = (float) SDL_cos(angle);
+    float sina = (float) SDL_sin(angle);
+    vec3 n = vec3_normalize(axis);
+    mat4 rotation = build_mat4(
+        n.x*n.x*(1.0f-cosa) + cosa,
+        n.x*n.y*(1.0f-cosa) - n.z*sina,
+        n.x*n.z*(1.0f-cosa) + n.y*sina,
+        0.0f,
+        n.x*n.y*(1.0f-cosa) + n.z*sina,
+        n.y*n.y*(1.0f-cosa) + cosa,
+        n.y*n.z*(1.0f-cosa) - n.x*sina,
+        0.0f,
+        n.x*n.z*(1.0f-cosa) - n.y*sina,
+        n.y*n.z*(1.0f-cosa) + n.x*sina,
+        n.z*n.z*(1.0f-cosa) + cosa,
+        0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f
+    );
+    vec4 point4 = build_vec4(point.x, point.y, point.z, 0.0f);
+    vec4 rotated = mat4_vec4_multiply(rotation, point4);
+    return build_vec3(rotated.x, rotated.y, rotated.z);
+}
 
+vec3 rotate_about_origin_xaxis(vec3 point, float angle) {
+    return rotate_about_origin_axis(point, angle, build_vec3(1.0f, 0.0f, 0.0f));
+}
 
-void _test_multiplication() {
-    mat4 a;
-    a.a.x = 5.0f;
-    a.a.y = 2.0f;
-    a.a.z = 6.0f;
-    a.a.w = 1.0f;
-    a.b.x = 0.0f;
-    a.b.y = 6.0f;
-    a.b.z = 2.0f;
-    a.b.w = 0.0f;
-    a.c.x = 3.0f;
-    a.c.y = 8.0f;
-    a.c.z = 1.0f;
-    a.c.w = 4.0f;
-    a.d.x = 1.0f;
-    a.d.y = 8.0f;
-    a.d.z = 5.0f;
-    a.d.w = 6.0f;
-    mat4 b;
-    b.a.x = 7.0f;
-    b.a.y = 5.0f;
-    b.a.z = 8.0f;
-    b.a.w = 0.0f;
-    b.b.x = 1.0f;
-    b.b.y = 8.0f;
-    b.b.z = 2.0f;
-    b.b.w = 6.0f;
-    b.c.x = 9.0f;
-    b.c.y = 4.0f;
-    b.c.z = 3.0f;
-    b.c.w = 8.0f;
-    b.d.x = 5.0f;
-    b.d.y = 3.0f;
-    b.d.z = 7.0f;
-    b.d.w = 9.0f;
-    // print_mat4(mat4_vec4_multiply(a, b));
-    // print_vec4(mat4_vec4_multiply(a, b.a));
+vec3 rotate_about_origin_yaxis(vec3 point, float angle) {
+    return rotate_about_origin_axis(point, angle, build_vec3(0.0f, 1.0f, 0.0f));
+
+}
+vec3 rotate_about_origin_zaxis(vec3 point, float angle) {
+    return rotate_about_origin_axis(point, angle, build_vec3(0.0f, 0.0f, 1.0f));
+}
+
+extern vec4 build_vec4(float x, float y, float z, float w) {
+    vec4 result;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    result.w = w;
+    return result;
+}
+
+extern mat4 perspective_projection(float angle, float aspect_ratio, float near, float far) {
+    // https://www.scratchapixel.com/lessons/3d-basic-rendering/perspective-and-orthographic-projection-matrix/opengl-perspective-projection-matrix
+    float r = (float) SDL_tan(angle/2.0f) * near;
+    float t = r / aspect_ratio;
+    float n = near;
+    float f = far;
+    return build_mat4(
+        n/r, 0.0f,   0.0f, 0.0f,
+        0.0f,   -n/t, 0.0f, 0.0f,
+        0.0f,   0.0f,   -((f+n)/(f-n)), -1.0f,
+        0.0f,   0.0f,  -((2.0f*f*n)/(f-n)), 0.0f
+    );
+}
+
+float deg_to_rad(float deg) {
+    return (float) PI*deg/180.0f;
 }

@@ -61,5 +61,12 @@ extern float vec3_dot(vec3 a, vec3 b);
 extern vec3 vec3_normalize(vec3 a);
 extern float vec3_magnitude(vec3 a);
 extern vec3 build_vec3(float x, float y, float z);
+extern vec3 rotate_about_origin_axis(vec3 point, float angle, vec3 axis);
+extern vec3 rotate_about_origin_xaxis(vec3 point, float angle);
+extern vec3 rotate_about_origin_yaxis(vec3 point, float angle);
+extern vec3 rotate_about_origin_zaxis(vec3 point, float angle);
+extern vec4 build_vec4(float x, float y, float z, float w);
+extern mat4 perspective_projection(float angle, float aspect_ratio, float near, float far);
+extern float deg_to_rad(float deg);
 
 #endif

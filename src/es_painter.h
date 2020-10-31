@@ -73,7 +73,8 @@ typedef struct {
     Uint32 num_vertices;
     Uint32 num_indices;
     Uint32 mip_levels;
-    float distance;
+    vec3 camera_position;
+    float camera_fov;
 } EsPainter;
 
 extern SDL_bool painter_initialise(EsPainter* painter);
