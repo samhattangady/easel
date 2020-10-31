@@ -42,5 +42,6 @@ typedef struct {
 } TutorialVertex;
 
 extern void warehouse_error_popup(const char* error_header, const char* error_text);
+extern float warehouse_log_2(float num);
 
 #endif

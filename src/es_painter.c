@@ -16,10 +16,14 @@ SDL_bool _painter_create_swapchain(EsPainter* painter);
 SDL_bool _painter_recreate_swapchain(EsPainter* painter);
 SDL_bool _painter_create_buffer(EsPainter* painter, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer* buffer, VkDeviceMemory* bufferMemory);
 Uint32 _painter_find_memory_type(EsPainter* painter, VkMemoryPropertyFlags property_flags, VkMemoryRequirements* memory_requirements);
-SDL_bool _painter_transition_image_layout(EsPainter* painter, VkImage* image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout);
+SDL_bool _painter_transition_image_layout(EsPainter* painter, VkImage* image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout, Uint32 mip_levels);
 SDL_bool _painter_copy_buffer_to_image(EsPainter* painter, VkBuffer* buffer, VkImage* image, Uint32 width, Uint32 height);
-SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory);
-SDL_bool _painter_create_image_view(EsPainter* painter, VkFormat format, VkImageAspectFlags aspect_flags, VkImage* image, VkImageView* image_view);
+SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, Uint32 mip_levels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory);
+SDL_bool _painter_create_image_view(EsPainter* painter, VkFormat format, VkImageAspectFlags aspect_flags, Uint32 mip_levels, VkImage* image, VkImageView* image_view);
+VkCommandBuffer _painter_begin_single_use_command_buffer(EsPainter* painter);
+SDL_bool _painter_end_single_use_command_buffer(EsPainter* painter, VkCommandBuffer* command_buffer);
+SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat image_format, Uint32 width, Uint32 height, Uint32 mip_levels);
+
 
 static void _painter_read_obj_file(const char* filename, const int is_mtl, const char *obj_filename, char** data, size_t* len) {
     obj_filename;
@@ -146,6 +150,9 @@ SDL_bool painter_initialise(EsPainter* painter) {
         painter->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
         painter->vertices[face.v_idx].tex.y = 1.0f - attrib.texcoords[face.vt_idx*2 + 1];
     }
+    tinyobj_attrib_free(&attrib);
+    tinyobj_shapes_free(shapes, num_shapes);
+    tinyobj_materials_free(materials, num_materials);
 
     painter->uniform_buffer_object.model.a.x = 1.0f;
     painter->uniform_buffer_object.model.a.y = 0.0f;
@@ -717,7 +724,6 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     VkFormat depth_buffer_format = VK_FORMAT_UNDEFINED;
     VkImageTiling depth_image_tiling = VK_IMAGE_TILING_OPTIMAL;
     VkFormatFeatureFlags depth_feature_flags = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    VkFormatProperties format_properties;
     for (Uint32 i=0; i<3; i++) {
         VkFormatProperties properties;
         vkGetPhysicalDeviceFormatProperties(painter->physical_device, desired_formats[i], &properties);
@@ -1047,13 +1053,13 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     }
 
 
-    sdl_result = _painter_create_image(painter, swapchain_extent.width, swapchain_extent.height, depth_buffer_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->depth_image, &painter->depth_image_memory);
+    sdl_result = _painter_create_image(painter, swapchain_extent.width, swapchain_extent.height, 1, depth_buffer_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->depth_image, &painter->depth_image_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create depth image");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    sdl_result = _painter_create_image_view(painter, depth_buffer_format, VK_IMAGE_ASPECT_DEPTH_BIT, &painter->depth_image, &painter->depth_image_view);
+    sdl_result = _painter_create_image_view(painter, depth_buffer_format, VK_IMAGE_ASPECT_DEPTH_BIT, 1, &painter->depth_image, &painter->depth_image_view);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create depth image view");
         painter_cleanup(painter);
@@ -1094,7 +1100,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         return SDL_FALSE;
     }
 
-    sdl_result = _painter_transition_image_layout(painter, &painter->depth_image, depth_buffer_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+    sdl_result = _painter_transition_image_layout(painter, &painter->depth_image, depth_buffer_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1);
     if (!sdl_result) return SDL_FALSE;
 
 
@@ -1107,6 +1113,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         painter_cleanup(painter);
         return SDL_FALSE;
     }
+    painter->mip_levels = (Uint32) (SDL_floor(warehouse_log_2(SDL_max(tex_width, tex_height))) + 1);
     VkDeviceSize tex_size = tex_width * tex_height * 4;
     VkBuffer tex_buffer;
     VkDeviceMemory tex_buffer_memory;
@@ -1122,22 +1129,22 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     vkUnmapMemory(painter->device, tex_buffer_memory);
     stbi_image_free(pixels);
 
-    sdl_result = _painter_create_image(painter, tex_width, tex_height, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->texture_image, &painter->texture_image_memory);
+    sdl_result = _painter_create_image(painter, tex_width, tex_height, painter->mip_levels, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->texture_image, &painter->texture_image_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture image");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    sdl_result = _painter_transition_image_layout(painter, &painter->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    sdl_result = _painter_transition_image_layout(painter, &painter->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, painter->mip_levels);
     if (!sdl_result) return SDL_FALSE;
     sdl_result = _painter_copy_buffer_to_image(painter, &tex_buffer, &painter->texture_image, tex_width, tex_height);
     if (!sdl_result) return SDL_FALSE;
-    sdl_result = _painter_transition_image_layout(painter, &painter->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    if (!sdl_result) return SDL_FALSE;
     vkDestroyBuffer(painter->device, tex_buffer, NULL);
     vkFreeMemory(painter->device, tex_buffer_memory, NULL);
+    sdl_result = _painter_generate_mipmaps(painter, &painter->texture_image, VK_FORMAT_R8G8B8A8_SRGB, tex_width, tex_height, painter->mip_levels);
+    if (!sdl_result) return SDL_FALSE;
 
-    sdl_result = _painter_create_image_view(painter, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, &painter->texture_image, &painter->texture_image_view);
+    sdl_result = _painter_create_image_view(painter, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, painter->mip_levels, &painter->texture_image, &painter->texture_image_view);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture image view");
         painter_cleanup(painter);
@@ -1160,7 +1167,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     sampler_create_info.compareEnable = VK_FALSE;
     sampler_create_info.compareOp = VK_COMPARE_OP_ALWAYS;
     sampler_create_info.minLod = 0.0f;
-    sampler_create_info.maxLod = 0.0f;
+    sampler_create_info.maxLod = (float) painter->mip_levels;
     sampler_create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     sampler_create_info.unnormalizedCoordinates = VK_FALSE;
     result = vkCreateSampler(painter->device, &sampler_create_info, NULL, &painter->texture_sampler);
@@ -1693,32 +1700,11 @@ Uint32 _painter_find_memory_type(EsPainter* painter, VkMemoryPropertyFlags prope
     return memory_type_index;
 }
 
-SDL_bool _painter_transition_image_layout(EsPainter* painter, VkImage* image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout) {
+SDL_bool _painter_transition_image_layout(EsPainter* painter, VkImage* image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout, Uint32 mip_levels) {
     VkResult result;
-    VkCommandBufferAllocateInfo command_buffer_allocate_info;
-    command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    command_buffer_allocate_info.pNext = NULL;
-    command_buffer_allocate_info.commandPool = painter->command_pool;
-    command_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    command_buffer_allocate_info.commandBufferCount = 1;
-    VkCommandBuffer command_buffer;
-    result = vkAllocateCommandBuffers(painter->device, &command_buffer_allocate_info, &command_buffer);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Vulkan Setup.", "Could not allocate command buffers");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    VkCommandBufferBeginInfo command_buffer_begin_info;
-    command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    command_buffer_begin_info.pNext = NULL;
-    command_buffer_begin_info.flags = 0;
-    command_buffer_begin_info.pInheritanceInfo = NULL;
-    result = vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Vulkan Setup.", "Could not begin command buffers");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
+    SDL_bool sdl_result;
+    VkCommandBuffer command_buffer = _painter_begin_single_use_command_buffer(painter);
+    if (command_buffer == NULL) return SDL_FALSE;
     VkPipelineStageFlags source_stage;
     VkPipelineStageFlags dest_stage;
     VkImageMemoryBarrier barrier;
@@ -1730,7 +1716,7 @@ SDL_bool _painter_transition_image_layout(EsPainter* painter, VkImage* image, Vk
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.image = *image;
     barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.levelCount = mip_levels;
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = 1;
     if (new_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
@@ -1744,19 +1730,16 @@ SDL_bool _painter_transition_image_layout(EsPainter* painter, VkImage* image, Vk
     if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-
         source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         dest_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
     } else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
         source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         dest_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     } else if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
         source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         dest_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
     } else {
@@ -1765,59 +1748,16 @@ SDL_bool _painter_transition_image_layout(EsPainter* painter, VkImage* image, Vk
         return SDL_FALSE;
     }
     vkCmdPipelineBarrier(command_buffer, source_stage, dest_stage, 0, 0, NULL, 0, NULL, 1, &barrier);
-    result = vkEndCommandBuffer(command_buffer);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Vulkan Setup.", "Could not end command buffers");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    VkSubmitInfo submit_info;
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info.pNext = NULL;
-    submit_info.waitSemaphoreCount = 0;
-    submit_info.pWaitSemaphores = NULL;
-    submit_info.pWaitDstStageMask = NULL;
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &command_buffer;
-    submit_info.signalSemaphoreCount = 0;
-    submit_info.pSignalSemaphores = NULL;
-    result = vkQueueSubmit(painter->graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Setup.", "Could not submit to graphics queue: transition");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    vkQueueWaitIdle(painter->presentation_queue);
-    vkFreeCommandBuffers(painter->device, painter->command_pool, 1, &command_buffer);
+    sdl_result = _painter_end_single_use_command_buffer(painter, &command_buffer);
+    if (!sdl_result) return SDL_FALSE;
     return SDL_TRUE;
 }
 
 SDL_bool _painter_copy_buffer_to_image(EsPainter* painter, VkBuffer* buffer, VkImage* image, Uint32 width, Uint32 height) {
     VkResult result;
-    VkCommandBufferAllocateInfo command_buffer_allocate_info;
-    command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    command_buffer_allocate_info.pNext = NULL;
-    command_buffer_allocate_info.commandPool = painter->command_pool;
-    command_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    command_buffer_allocate_info.commandBufferCount = 1;
-    VkCommandBuffer command_buffer;
-    result = vkAllocateCommandBuffers(painter->device, &command_buffer_allocate_info, &command_buffer);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Vulkan Setup.", "Could not allocate command buffers");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    VkCommandBufferBeginInfo command_buffer_begin_info;
-    command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    command_buffer_begin_info.pNext = NULL;
-    command_buffer_begin_info.flags = 0;
-    command_buffer_begin_info.pInheritanceInfo = NULL;
-    result = vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Vulkan Setup.", "Could not begin command buffers");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
+    SDL_bool sdl_result;
+    VkCommandBuffer command_buffer = _painter_begin_single_use_command_buffer(painter);
+    if (command_buffer == NULL) return SDL_FALSE;
     VkBufferImageCopy image_region;
     image_region.bufferOffset = 0;
     image_region.bufferRowLength = 0;
@@ -1833,34 +1773,12 @@ SDL_bool _painter_copy_buffer_to_image(EsPainter* painter, VkBuffer* buffer, VkI
     image_region.imageExtent.height = height;
     image_region.imageExtent.depth = 1;
     vkCmdCopyBufferToImage(command_buffer, *buffer, *image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &image_region);
-    result = vkEndCommandBuffer(command_buffer);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Vulkan Setup.", "Could not end command buffers");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    VkSubmitInfo submit_info;
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submit_info.pNext = NULL;
-    submit_info.waitSemaphoreCount = 0;
-    submit_info.pWaitSemaphores = NULL;
-    submit_info.pWaitDstStageMask = NULL;
-    submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &command_buffer;
-    submit_info.signalSemaphoreCount = 0;
-    submit_info.pSignalSemaphores = NULL;
-    result = vkQueueSubmit(painter->graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in setup.", "Could not submit to graphics queue: copy buffer");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    vkQueueWaitIdle(painter->presentation_queue);
-    vkFreeCommandBuffers(painter->device, painter->command_pool, 1, &command_buffer);
+    sdl_result = _painter_end_single_use_command_buffer(painter, &command_buffer);
+    if (!sdl_result) return SDL_FALSE;
     return SDL_TRUE;
 }
 
-SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory) {
+SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, Uint32 mip_levels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory) {
     VkResult result;
     VkImageCreateInfo image_create_info;
     image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1871,7 +1789,7 @@ SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, 
     image_create_info.extent.depth = 1;
     image_create_info.extent.width = width;
     image_create_info.extent.height = height;
-    image_create_info.mipLevels = 1;
+    image_create_info.mipLevels = mip_levels;
     image_create_info.arrayLayers = 1;
     image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
     image_create_info.tiling = tiling;
@@ -1904,7 +1822,7 @@ SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, 
     return SDL_TRUE;
 }
 
-SDL_bool _painter_create_image_view(EsPainter* painter, VkFormat format, VkImageAspectFlags aspect_flags, VkImage* image, VkImageView* image_view) {
+SDL_bool _painter_create_image_view(EsPainter* painter, VkFormat format, VkImageAspectFlags aspect_flags, Uint32 mip_levels, VkImage* image, VkImageView* image_view) {
     VkResult result;
     VkImageViewCreateInfo image_view_create_info;
     image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1919,7 +1837,7 @@ SDL_bool _painter_create_image_view(EsPainter* painter, VkFormat format, VkImage
     image_view_create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
     image_view_create_info.subresourceRange.aspectMask = aspect_flags;
     image_view_create_info.subresourceRange.baseMipLevel = 0;
-    image_view_create_info.subresourceRange.levelCount = 1;
+    image_view_create_info.subresourceRange.levelCount = mip_levels;
     image_view_create_info.subresourceRange.baseArrayLayer = 0;
     image_view_create_info.subresourceRange.layerCount = 1;
     result = vkCreateImageView(painter->device, &image_view_create_info, NULL, image_view);
@@ -1928,5 +1846,156 @@ SDL_bool _painter_create_image_view(EsPainter* painter, VkFormat format, VkImage
         painter_cleanup(painter);
         return SDL_FALSE;
     }
+    return SDL_TRUE;
+}
+
+VkCommandBuffer _painter_begin_single_use_command_buffer(EsPainter* painter) {
+    VkResult result;
+    SDL_bool sdl_result;
+    VkCommandBufferAllocateInfo command_buffer_allocate_info;
+    command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    command_buffer_allocate_info.pNext = NULL;
+    command_buffer_allocate_info.commandPool = painter->command_pool;
+    command_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    command_buffer_allocate_info.commandBufferCount = 1;
+    VkCommandBuffer command_buffer;
+    result = vkAllocateCommandBuffers(painter->device, &command_buffer_allocate_info, &command_buffer);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not allocate command buffers");
+        painter_cleanup(painter);
+        return NULL;
+    }
+    VkCommandBufferBeginInfo command_buffer_begin_info;
+    command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    command_buffer_begin_info.pNext = NULL;
+    command_buffer_begin_info.flags = 0;
+    command_buffer_begin_info.pInheritanceInfo = NULL;
+    result = vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not begin command buffers");
+        painter_cleanup(painter);
+        return NULL;
+    }
+    return command_buffer;
+}
+
+SDL_bool _painter_end_single_use_command_buffer(EsPainter* painter, VkCommandBuffer* command_buffer) {
+    VkResult result;
+    SDL_bool sdl_result;
+    result = vkEndCommandBuffer(*command_buffer);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not end command buffers");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    VkSubmitInfo submit_info;
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.pNext = NULL;
+    submit_info.waitSemaphoreCount = 0;
+    submit_info.pWaitSemaphores = NULL;
+    submit_info.pWaitDstStageMask = NULL;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = command_buffer;
+    submit_info.signalSemaphoreCount = 0;
+    submit_info.pSignalSemaphores = NULL;
+    result = vkQueueSubmit(painter->graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Setup.", "Could not submit to graphics queue: transition");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    vkQueueWaitIdle(painter->presentation_queue);
+    vkFreeCommandBuffers(painter->device, painter->command_pool, 1, command_buffer);
+    return SDL_TRUE;
+}
+
+SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat image_format, Uint32 width, Uint32 height, Uint32 mip_levels) {
+    VkResult result;
+    SDL_bool sdl_result;
+    VkFormatProperties format_properties;
+    vkGetPhysicalDeviceFormatProperties(painter->physical_device, image_format, &format_properties);
+    if (!(format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
+        warehouse_error_popup("Error in Setup.", "Currently do not support GPUs that don't have linear blitting");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    VkCommandBuffer command_buffer = _painter_begin_single_use_command_buffer(painter);
+    if (command_buffer == NULL) return SDL_FALSE;
+    VkImageMemoryBarrier barrier;
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.pNext = NULL;
+    // barrier.oldLayout = old_layout;
+    // barrier.newLayout = new_layout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = *image;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.layerCount = 1;
+    int mip_width = width;
+    int mip_height = height;
+    for (Uint32 i=1; i<mip_levels; i++) {
+        barrier.subresourceRange.baseMipLevel = i - 1;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        vkCmdPipelineBarrier(command_buffer,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+            0, NULL, 0, NULL, 1, &barrier);
+        VkImageBlit blit;
+        blit.srcOffsets[0].x = 0;
+        blit.srcOffsets[0].y = 0;
+        blit.srcOffsets[0].z = 0;
+        blit.srcOffsets[1].x = mip_width;
+        blit.srcOffsets[1].y = mip_height;
+        blit.srcOffsets[1].z = 1;
+        blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.srcSubresource.mipLevel = i - 1;
+        blit.srcSubresource.baseArrayLayer = 0;
+        blit.srcSubresource.layerCount = 1;
+        blit.dstOffsets[0].x = 0;
+        blit.dstOffsets[0].y = 0;
+        blit.dstOffsets[0].z = 0;
+        if (mip_width > 1)
+            blit.dstOffsets[1].x = mip_width / 2;
+        else
+            blit.dstOffsets[1].x = 1;
+        if (mip_height > 1)
+            blit.dstOffsets[1].y = mip_height / 2;
+        else
+            blit.dstOffsets[1].y = 1;
+        blit.dstOffsets[1].z = 1;
+        blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.dstSubresource.mipLevel = i;
+        blit.dstSubresource.baseArrayLayer = 0;
+        blit.dstSubresource.layerCount = 1;
+        vkCmdBlitImage(command_buffer,
+            *image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            *image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            1, &blit, VK_FILTER_LINEAR);
+        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        vkCmdPipelineBarrier(command_buffer,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+            0, NULL, 0, NULL, 1, &barrier);
+        if (mip_width > 1)
+            mip_width /= 2;
+        if (mip_height > 1)
+            mip_height /= 2;
+    }
+    barrier.subresourceRange.baseMipLevel = mip_levels - 1;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    vkCmdPipelineBarrier(command_buffer,
+        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+        0, NULL, 0, NULL, 1, &barrier);
+    sdl_result = _painter_end_single_use_command_buffer(painter, &command_buffer);
+    if (!sdl_result) return SDL_FALSE;
     return SDL_TRUE;
 }
