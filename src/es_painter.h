@@ -73,6 +73,7 @@ typedef struct {
     Uint32 num_vertices;
     Uint32 num_indices;
     Uint32 mip_levels;
+    float distance;
 } EsPainter;
 
 extern SDL_bool painter_initialise(EsPainter* painter);

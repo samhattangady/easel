@@ -43,7 +43,6 @@ static void _painter_read_obj_file(const char* filename, const int is_mtl, const
         *len = 0;
         return;
     }
-    SDL_Log("obj file is not null\n");
     file_size = SDL_RWseek(obj_file, 0, RW_SEEK_END);
     if (file_size < 0) {
         SDL_RWclose(obj_file);
@@ -51,7 +50,6 @@ static void _painter_read_obj_file(const char* filename, const int is_mtl, const
         *len = 0;
         return;
     }
-    SDL_Log("file size is not < 0\n");
     result = SDL_RWseek(obj_file, 0, RW_SEEK_SET);
     if (result < 0) {
         SDL_RWclose(obj_file);
@@ -83,7 +81,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
     }
     SDL_Window* window;
     window = SDL_CreateWindow("Easel", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                              800, 600, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
+                              1024, 768, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
     if (window == NULL) {
         warehouse_error_popup("Error in SDL Window Creation.", SDL_GetError());
         painter_cleanup(painter);
@@ -108,7 +106,6 @@ SDL_bool painter_initialise(EsPainter* painter) {
     size_t num_shapes;
     tinyobj_material_t* materials = NULL;
     size_t num_materials;
-
     Uint32 flags = TINYOBJ_FLAG_TRIANGULATE;
     int ret = tinyobj_parse_obj(&attrib, &shapes, &num_shapes, &materials,
                                 &num_materials, MODEL_PATH, _painter_read_obj_file, flags);
@@ -154,39 +151,11 @@ SDL_bool painter_initialise(EsPainter* painter) {
     tinyobj_shapes_free(shapes, num_shapes);
     tinyobj_materials_free(materials, num_materials);
 
-    painter->uniform_buffer_object.model.a.x = 1.0f;
-    painter->uniform_buffer_object.model.a.y = 0.0f;
-    painter->uniform_buffer_object.model.a.z = 0.0f;
-    painter->uniform_buffer_object.model.a.w = 0.0f;
-    painter->uniform_buffer_object.model.b.x = 0.0f;
-    painter->uniform_buffer_object.model.b.y = 1.0f;
-    painter->uniform_buffer_object.model.b.z = 0.0f;
-    painter->uniform_buffer_object.model.b.w = 0.0f;
-    painter->uniform_buffer_object.model.c.x = 0.0f;
-    painter->uniform_buffer_object.model.c.y = 0.0f;
-    painter->uniform_buffer_object.model.c.z = 1.0f;
-    painter->uniform_buffer_object.model.c.w = 0.0f;
-    painter->uniform_buffer_object.model.d.x = 0.0f;
-    painter->uniform_buffer_object.model.d.y = 0.0f;
-    painter->uniform_buffer_object.model.d.z = 0.0f;
-    painter->uniform_buffer_object.model.d.w = 1.0f;
-
-    painter->uniform_buffer_object.view.a.x = -0.707107f;
-    painter->uniform_buffer_object.view.a.y = -0.408248f;
-    painter->uniform_buffer_object.view.a.z = 0.577350f;
-    painter->uniform_buffer_object.view.a.w = 0.000000f;
-    painter->uniform_buffer_object.view.b.x = 0.707107f;
-    painter->uniform_buffer_object.view.b.y = -0.408248f;
-    painter->uniform_buffer_object.view.b.z = 0.577350f;
-    painter->uniform_buffer_object.view.b.w = 0.000000f;
-    painter->uniform_buffer_object.view.c.x = 0.000000f;
-    painter->uniform_buffer_object.view.c.y = 0.816497f;
-    painter->uniform_buffer_object.view.c.z = 0.577350f;
-    painter->uniform_buffer_object.view.c.w = 0.000000f;
-    painter->uniform_buffer_object.view.d.x = -0.000000f;
-    painter->uniform_buffer_object.view.d.y = -0.000000f;
-    painter->uniform_buffer_object.view.d.z = -3.464102f;
-    painter->uniform_buffer_object.view.d.w = 1.000000f;
+    painter->uniform_buffer_object.model = identity_mat4();
+    painter->distance = 2.0f;
+    vec3 eye = build_vec3(2.0f, 2.0f, 2.0f);
+    vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
+    painter->uniform_buffer_object.view = look_at_z(eye, target);
 
     painter->uniform_buffer_object.proj.a.x = 3.218951f;
     painter->uniform_buffer_object.proj.a.y = 0.000000f;
@@ -1481,6 +1450,10 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
         return SDL_FALSE;
     }
 
+    painter->distance += 0.0002f;
+    vec3 eye = build_vec3(painter->distance, painter->distance, painter->distance);
+    vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
+    painter->uniform_buffer_object.view = look_at_z(eye, target);
     void* uniform_data;
     result = vkMapMemory(painter->device, painter->uniform_buffers_memory[image_index], 0, painter->uniform_buffer_size, 0, &uniform_data);
     if (result != VK_SUCCESS) {

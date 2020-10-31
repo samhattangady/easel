@@ -10,7 +10,6 @@ int main(int argc, char** argv) {
     SDL_bool result;
 
     EsPainter painter;
-
     result = painter_initialise(&painter);
     if (!result)
         return -1;
