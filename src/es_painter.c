@@ -18,7 +18,7 @@ SDL_bool _painter_create_buffer(EsPainter* painter, VkDeviceSize size, VkBufferU
 Uint32 _painter_find_memory_type(EsPainter* painter, VkMemoryPropertyFlags property_flags, VkMemoryRequirements* memory_requirements);
 SDL_bool _painter_transition_image_layout(EsPainter* painter, VkImage* image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout, Uint32 mip_levels);
 SDL_bool _painter_copy_buffer_to_image(EsPainter* painter, VkBuffer* buffer, VkImage* image, Uint32 width, Uint32 height);
-SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, Uint32 mip_levels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory);
+SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, Uint32 mip_levels, VkSampleCountFlagBits num_samples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory);
 SDL_bool _painter_create_image_view(EsPainter* painter, VkFormat format, VkImageAspectFlags aspect_flags, Uint32 mip_levels, VkImage* image, VkImageView* image_view);
 VkCommandBuffer _painter_begin_single_use_command_buffer(EsPainter* painter);
 SDL_bool _painter_end_single_use_command_buffer(EsPainter* painter, VkCommandBuffer* command_buffer);
@@ -349,6 +349,16 @@ SDL_bool painter_initialise(EsPainter* painter) {
         painter_cleanup(painter);
         return SDL_FALSE;
     }
+    VkPhysicalDeviceProperties physical_device_properties;
+    vkGetPhysicalDeviceProperties(painter->physical_device, &physical_device_properties);
+    VkSampleCountFlags counts = physical_device_properties.limits.framebufferColorSampleCounts & physical_device_properties.limits.framebufferDepthSampleCounts;
+    if (counts & VK_SAMPLE_COUNT_64_BIT) { painter->msaa_samples = VK_SAMPLE_COUNT_64_BIT; }
+    else if (counts & VK_SAMPLE_COUNT_32_BIT) { painter->msaa_samples = VK_SAMPLE_COUNT_32_BIT; }
+    else if (counts & VK_SAMPLE_COUNT_16_BIT) { painter->msaa_samples = VK_SAMPLE_COUNT_16_BIT; }
+    else if (counts & VK_SAMPLE_COUNT_8_BIT) { painter->msaa_samples = VK_SAMPLE_COUNT_8_BIT; }
+    else if (counts & VK_SAMPLE_COUNT_4_BIT) { painter->msaa_samples = VK_SAMPLE_COUNT_4_BIT; }
+    else if (counts & VK_SAMPLE_COUNT_2_BIT) { painter->msaa_samples = VK_SAMPLE_COUNT_2_BIT; }
+    else painter->msaa_samples = VK_SAMPLE_COUNT_1_BIT;
 
     sdl_result = _painter_create_swapchain(painter);
     if (!sdl_result) {
@@ -741,29 +751,42 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     VkAttachmentDescription color_attachment;
     color_attachment.flags = 0;
     color_attachment.format = swapchain_image_format;
-    color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    color_attachment.samples = painter->msaa_samples;
     color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     VkAttachmentDescription depth_attachment;
     depth_attachment.flags = 0;
     depth_attachment.format = depth_buffer_format;
-    depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depth_attachment.samples = painter->msaa_samples;
     depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    VkAttachmentDescription color_resolve_attachment;
+    color_resolve_attachment.flags = 0;
+    color_resolve_attachment.format = swapchain_image_format;
+    color_resolve_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    color_resolve_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_resolve_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_resolve_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_resolve_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    color_resolve_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    color_resolve_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     VkAttachmentReference color_attachment_reference;
     color_attachment_reference.attachment = 0;
     color_attachment_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     VkAttachmentReference depth_attachment_reference;
     depth_attachment_reference.attachment = 1;
     depth_attachment_reference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    VkAttachmentReference color_resolve_attachment_reference;
+    color_resolve_attachment_reference.attachment = 2;
+    color_resolve_attachment_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     VkSubpassDescription subpass;
     subpass.flags = 0;
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -771,7 +794,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     subpass.pInputAttachments = NULL;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &color_attachment_reference;
-    subpass.pResolveAttachments = 0;
+    subpass.pResolveAttachments = &color_resolve_attachment_reference;
     subpass.pDepthStencilAttachment = &depth_attachment_reference;
     subpass.preserveAttachmentCount = 0;
     subpass.pPreserveAttachments = NULL;
@@ -783,14 +806,15 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     subpass_dependency.srcAccessMask = 0;
     subpass_dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     subpass_dependency.dependencyFlags= 0;
-    VkAttachmentDescription attachments[2];
+    VkAttachmentDescription attachments[3];
     attachments[0] = color_attachment;
     attachments[1] = depth_attachment;
+    attachments[2] = color_resolve_attachment;
     VkRenderPassCreateInfo render_pass_create_info;
     render_pass_create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     render_pass_create_info.pNext = NULL;
     render_pass_create_info.flags = 0;
-    render_pass_create_info.attachmentCount = 2;
+    render_pass_create_info.attachmentCount = 3;
     render_pass_create_info.pAttachments = attachments;
     render_pass_create_info.subpassCount = 1;
     render_pass_create_info.pSubpasses = &subpass;
@@ -961,7 +985,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     multisample_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisample_state_create_info.pNext = NULL;
     multisample_state_create_info.flags = 0;
-    multisample_state_create_info.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    multisample_state_create_info.rasterizationSamples = painter->msaa_samples;
     multisample_state_create_info.sampleShadingEnable = VK_FALSE;
     multisample_state_create_info.minSampleShading = 1.0f;
     multisample_state_create_info.pSampleMask = NULL;
@@ -1051,9 +1075,22 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         painter_cleanup(painter);
         return SDL_FALSE;
     }
+    
+    sdl_result = _painter_create_image(painter, swapchain_extent.width, swapchain_extent.height, 1, painter->msaa_samples, swapchain_image_format, VK_IMAGE_TILING_OPTIMAL,  VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->color_image, &painter->color_image_memory);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create coloe image");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    sdl_result = _painter_create_image_view(painter, swapchain_image_format, VK_IMAGE_ASPECT_COLOR_BIT, 1, &painter->color_image, &painter->color_image_view);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create color image view");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
 
 
-    sdl_result = _painter_create_image(painter, swapchain_extent.width, swapchain_extent.height, 1, depth_buffer_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->depth_image, &painter->depth_image_memory);
+    sdl_result = _painter_create_image(painter, swapchain_extent.width, swapchain_extent.height, 1, painter->msaa_samples, depth_buffer_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->depth_image, &painter->depth_image_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create depth image");
         painter_cleanup(painter);
@@ -1068,15 +1105,16 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
 
     painter->swapchain_framebuffers = (VkFramebuffer*) SDL_malloc(painter->swapchain_image_count * sizeof(VkFramebuffer));
     for (Uint32 i=0; i<painter->swapchain_image_count; i++) {
-        VkImageView image_view_attachments[2];
-        image_view_attachments[0] = painter->swapchain_image_views[i];
+        VkImageView image_view_attachments[3];
+        image_view_attachments[0] = painter->color_image_view;
         image_view_attachments[1] = painter->depth_image_view;
+        image_view_attachments[2] = painter->swapchain_image_views[i];
         VkFramebufferCreateInfo framebuffer_create_info;
         framebuffer_create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         framebuffer_create_info.pNext = NULL;
         framebuffer_create_info.flags = 0;
         framebuffer_create_info.renderPass = painter->render_pass;
-        framebuffer_create_info.attachmentCount = 2;
+        framebuffer_create_info.attachmentCount = 3;
         framebuffer_create_info.pAttachments = image_view_attachments;
         framebuffer_create_info.width = swapchain_extent.width;
         framebuffer_create_info.height = swapchain_extent.height;
@@ -1129,7 +1167,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     vkUnmapMemory(painter->device, tex_buffer_memory);
     stbi_image_free(pixels);
 
-    sdl_result = _painter_create_image(painter, tex_width, tex_height, painter->mip_levels, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->texture_image, &painter->texture_image_memory);
+    sdl_result = _painter_create_image(painter, tex_width, tex_height, painter->mip_levels, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->texture_image, &painter->texture_image_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture image");
         painter_cleanup(painter);
@@ -1522,6 +1560,12 @@ void _painter_cleanup_swapchain(EsPainter* painter) {
         vkDestroyImage(painter->device, painter->depth_image, NULL);
     if (painter->depth_image_memory)
         vkFreeMemory(painter->device, painter->depth_image_memory, NULL);
+    if (painter->color_image_view)
+        vkDestroyImageView(painter->device, painter->color_image_view, NULL);
+    if (painter->color_image)
+        vkDestroyImage(painter->device, painter->color_image, NULL);
+    if (painter->color_image_memory)
+        vkFreeMemory(painter->device, painter->color_image_memory, NULL);
     if (painter->graphics_pipeline)
         vkDestroyPipeline(painter->device, painter->graphics_pipeline, NULL);
     if (painter->descriptor_set_layout)
@@ -1778,7 +1822,7 @@ SDL_bool _painter_copy_buffer_to_image(EsPainter* painter, VkBuffer* buffer, VkI
     return SDL_TRUE;
 }
 
-SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, Uint32 mip_levels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory) {
+SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, Uint32 mip_levels, VkSampleCountFlagBits num_samples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory) {
     VkResult result;
     VkImageCreateInfo image_create_info;
     image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1791,7 +1835,7 @@ SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, 
     image_create_info.extent.height = height;
     image_create_info.mipLevels = mip_levels;
     image_create_info.arrayLayers = 1;
-    image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_create_info.samples = num_samples;
     image_create_info.tiling = tiling;
     image_create_info.usage = usage;
     image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;

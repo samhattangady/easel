@@ -43,6 +43,8 @@ typedef struct {
     Uint32 index_buffer_size;
     Uint32 index_staging_buffer_size;
     Uint32 uniform_buffer_size;
+    VkDescriptorPool descriptor_pool;
+    VkDescriptorSet* descriptor_sets;
     VkBuffer vertex_staging_buffer;
     VkDeviceMemory vertex_staging_buffer_memory;
     VkBuffer index_staging_buffer;
@@ -55,13 +57,15 @@ typedef struct {
     VkDeviceMemory* uniform_buffers_memory;
     VkImage texture_image;
     VkDeviceMemory texture_image_memory;
-    VkDescriptorPool descriptor_pool;
-    VkDescriptorSet* descriptor_sets;
     VkImageView texture_image_view;
     VkSampler texture_sampler;
     VkImage depth_image;
     VkDeviceMemory depth_image_memory;
     VkImageView depth_image_view;
+    VkImage color_image;
+    VkDeviceMemory color_image_memory;
+    VkImageView color_image_view;
+    VkSampleCountFlagBits msaa_samples;
     TutorialVertex* vertices;
     Uint32* indices;
     UniformBufferObject uniform_buffer_object;
