@@ -153,7 +153,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
     painter->instances = (vec3*) SDL_malloc(INSTANCE_COUNT * sizeof(vec3));
     for (Uint32 i=0; i<INSTANCE_COUNT; i++) {
         painter->instances[i].x = ((float) rand() / (float) RAND_MAX * 5.0f) - 2.5f;
-        painter->instances[i].y = 0.0;
+        painter->instances[i].y = ((float) rand() / (float) RAND_MAX * 0.1f) - 0.05f;
         painter->instances[i].z = ((float) rand() / (float) RAND_MAX * 3.0f) - 1.5f;
     }
 
@@ -947,7 +947,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     rasterization_state_create_info.depthClampEnable = VK_FALSE;
     rasterization_state_create_info.rasterizerDiscardEnable = VK_FALSE;
     rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_FILL;
-    rasterization_state_create_info.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterization_state_create_info.cullMode = VK_CULL_MODE_NONE;
     rasterization_state_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterization_state_create_info.depthBiasEnable = VK_FALSE;
     rasterization_state_create_info.depthBiasConstantFactor = 0.0f;
@@ -1453,7 +1453,7 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
     // painter->camera_fov += 0.001f;
     // painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 10.0f);
-    // painter->camera_position = rotate_about_origin_axis(painter->camera_position, 0.001, build_vec3(1.0f, 1.0f, 1.2f));
+    painter->camera_position = rotate_about_origin_axis(painter->camera_position, 0.0003, build_vec3(0.0f, 0.0f, 1.0f));
     painter->uniform_buffer_object.view = look_at_z(painter->camera_position, target);
     void* uniform_data;
     result = vkMapMemory(painter->device, painter->uniform_buffers_memory[image_index], 0, painter->uniform_buffer_size, 0, &uniform_data);
