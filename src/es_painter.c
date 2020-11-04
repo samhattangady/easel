@@ -8,9 +8,9 @@
 
 #include <stdlib.h>
 
-#define INSTANCE_COUNT 50000
-#define MODEL_PATH "data/obj/grass1.obj"
-#define MODEL_TEXTURE_PATH "data/img/grass2.png"
+#define INSTANCE_COUNT 10000
+#define MODEL_PATH "data/obj/grass3.obj"
+#define MODEL_TEXTURE_PATH "data/img/grass3.png"
 
 void _painter_cleanup_swapchain(EsPainter* painter);
 SDL_bool _painter_create_swapchain(EsPainter* painter);
@@ -960,8 +960,8 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     multisample_state_create_info.pNext = NULL;
     multisample_state_create_info.flags = 0;
     multisample_state_create_info.rasterizationSamples = painter->msaa_samples;
-    multisample_state_create_info.sampleShadingEnable = VK_FALSE;
-    multisample_state_create_info.minSampleShading = 1.0f;
+    multisample_state_create_info.sampleShadingEnable = VK_TRUE;
+    multisample_state_create_info.minSampleShading = 0.2f;
     multisample_state_create_info.pSampleMask = NULL;
     multisample_state_create_info.alphaToCoverageEnable = VK_FALSE;
     multisample_state_create_info.alphaToOneEnable = VK_FALSE;
