@@ -8,7 +8,7 @@
 
 #include <stdlib.h>
 
-#define INSTANCE_COUNT 10000
+#define INSTANCE_COUNT 5000
 #define MODEL_PATH "data/obj/grass3.obj"
 #define MODEL_TEXTURE_PATH "data/img/grass3.png"
 
@@ -24,6 +24,8 @@ SDL_bool _painter_create_image_view(EsPainter* painter, VkFormat format, VkImage
 VkCommandBuffer _painter_begin_single_use_command_buffer(EsPainter* painter);
 SDL_bool _painter_end_single_use_command_buffer(EsPainter* painter, VkCommandBuffer* command_buffer);
 SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat image_format, Uint32 width, Uint32 height, Uint32 mip_levels);
+SDL_bool _painter_initialise_sdl_window(EsPainter* painter, const char* window_name);
+SDL_bool _painter_load_data(EsPainter* painter);
 
 
 static void _painter_read_obj_file(const char* filename, const int is_mtl, const char *obj_filename, char** data, size_t* len) {
@@ -73,7 +75,7 @@ static void _painter_read_obj_file(const char* filename, const int is_mtl, const
     return;
 }
 
-SDL_bool painter_initialise(EsPainter* painter) {
+SDL_bool _painter_initialise_sdl_window(EsPainter* painter, const char* window_name) {
     int init_success = SDL_Init(SDL_INIT_VIDEO);
     if (init_success !=0) {
         warehouse_error_popup("Error in SDL Initialisation.", SDL_GetError());
@@ -81,7 +83,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
         return SDL_FALSE;
     }
     SDL_Window* window;
-    window = SDL_CreateWindow("Easel", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+    window = SDL_CreateWindow(window_name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                               1024, 768, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
     if (window == NULL) {
         warehouse_error_popup("Error in SDL Window Creation.", SDL_GetError());
@@ -90,18 +92,10 @@ SDL_bool painter_initialise(EsPainter* painter) {
     }
     painter->window = window;
     painter->start_time = SDL_GetTicks();
+    return SDL_TRUE;
+}
 
-    VkResult result;
-    VkApplicationInfo app_info;
-    SDL_bool sdl_result;
-    app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    app_info.pNext = NULL;
-    app_info.pApplicationName = "Easel";
-    app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    app_info.pEngineName = "chapliboy engine";
-    app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    app_info.apiVersion = VK_API_VERSION_1_0;
-
+SDL_bool _painter_load_data(EsPainter* painter) {
     tinyobj_attrib_t attrib;
     tinyobj_shape_t* shapes = NULL;
     size_t num_shapes;
@@ -143,7 +137,6 @@ SDL_bool painter_initialise(EsPainter* painter) {
     tinyobj_attrib_free(&attrib);
     tinyobj_shapes_free(shapes, num_shapes);
     tinyobj_materials_free(materials, num_materials);
-
     painter->uniform_buffer_object.model = identity_mat4();
     painter->camera_position = build_vec3(0.0f, 2.0f, 0.5f);
     painter->camera_fov = 45.0f;
@@ -157,6 +150,26 @@ SDL_bool painter_initialise(EsPainter* painter) {
         painter->instances[i].y = ((float) rand() / (float) RAND_MAX * 0.1f) - 0.05f;
         painter->instances[i].z = ((float) rand() / (float) RAND_MAX * 3.0f) - 1.5f;
     }
+    return SDL_TRUE;
+}
+
+SDL_bool painter_initialise(EsPainter* painter) {
+    VkResult result;
+    SDL_bool sdl_result;
+
+    sdl_result = _painter_initialise_sdl_window(painter, "Easel");
+    if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_load_data(painter);
+    if (!sdl_result) return SDL_FALSE;
+
+    VkApplicationInfo app_info;
+    app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    app_info.pNext = NULL;
+    app_info.pApplicationName = "Easel";
+    app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+    app_info.pEngineName = "chapliboy engine";
+    app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+    app_info.apiVersion = VK_API_VERSION_1_0;
 
 #if DEBUG_BUILD==SDL_TRUE
     const Uint32 validation_layers_count = 1;
