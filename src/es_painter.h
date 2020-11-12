@@ -41,7 +41,6 @@ typedef struct {
     SDL_bool buffer_resized;
     Uint32 vertex_buffer_size;
     Uint32 vertex_staging_buffer_size;
-    Uint32 instance_buffer_size;
     Uint32 index_buffer_size;
     Uint32 index_staging_buffer_size;
     Uint32 uniform_buffer_size;
@@ -55,8 +54,6 @@ typedef struct {
     VkDeviceMemory vertex_buffer_memory;
     VkBuffer index_buffer;
     VkDeviceMemory index_buffer_memory;
-    VkBuffer instance_buffer;
-    VkDeviceMemory instance_buffer_memory;
     VkBuffer* uniform_buffers;
     VkDeviceMemory* uniform_buffers_memory;
     VkImage texture_image;
@@ -71,7 +68,6 @@ typedef struct {
     VkImageView color_image_view;
     VkSampleCountFlagBits msaa_samples;
     TutorialVertex* vertices;
-    vec3* instances;
     Uint32* indices;
     UniformBufferObject uniform_buffer_object;
     Uint32 start_time;

@@ -12,7 +12,6 @@ layout(binding = 0) uniform UniformBufferObject {
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inColor;
 layout(location = 2) in vec2 inTexCoord;
-layout(location = 3) in vec3 inInstancePos;
 
 layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec2 fragTexCoord;
@@ -35,7 +34,7 @@ float noise(vec2 n) {
 }
 
 void main() {
-    vec3 pos = inPosition + inInstancePos;
+    vec3 pos = inPosition;
     pos.x += (1.0-inTexCoord.y)/50.0 *sin(ubo.time*cos(noise(vec2(pos.x, pos.y)))*1.7);
     pos.z += (1.0-inTexCoord.y)/80.0 * abs(sin(ubo.time*1.3*pos.y*0.5));
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);

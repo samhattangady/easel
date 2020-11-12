@@ -8,7 +8,8 @@
 
 #include <stdlib.h>
 
-#define INSTANCE_COUNT 5000
+#define GRASS_INSTANCES 5000
+#define GRASS_NUM_VERTICES 4
 #define MODEL_PATH "data/obj/grass3.obj"
 #define MODEL_TEXTURE_PATH "data/img/grass3.png"
 
@@ -26,6 +27,9 @@ SDL_bool _painter_end_single_use_command_buffer(EsPainter* painter, VkCommandBuf
 SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat image_format, Uint32 width, Uint32 height, Uint32 mip_levels);
 SDL_bool _painter_initialise_sdl_window(EsPainter* painter, const char* window_name);
 SDL_bool _painter_load_data(EsPainter* painter);
+SDL_bool _painter_init_instance(EsPainter* painter);
+SDL_bool _painter_select_physical_device(EsPainter* painter);
+SDL_bool _painter_create_synchronisation_elements(EsPainter* painter);
 
 
 static void _painter_read_obj_file(const char* filename, const int is_mtl, const char *obj_filename, char** data, size_t* len) {
@@ -109,9 +113,9 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    painter->num_vertices = attrib.num_vertices;
+    painter->num_vertices = attrib.num_vertices * GRASS_INSTANCES;
     painter->vertices = (TutorialVertex*) SDL_malloc(painter->num_vertices * sizeof(TutorialVertex));
-    painter->num_indices = attrib.num_faces;
+    painter->num_indices = attrib.num_faces * GRASS_INSTANCES;
     painter->indices = (Uint32*) SDL_malloc(painter->num_indices * sizeof(Uint32));
     if (num_shapes != 1) {
         warehouse_error_popup("Error in Setup.", "Currently only support obj with 1 shape");
@@ -134,9 +138,6 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         painter->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
         painter->vertices[face.v_idx].tex.y = 1.0f - attrib.texcoords[face.vt_idx*2 + 1];
     }
-    tinyobj_attrib_free(&attrib);
-    tinyobj_shapes_free(shapes, num_shapes);
-    tinyobj_materials_free(materials, num_materials);
     painter->uniform_buffer_object.model = identity_mat4();
     painter->camera_position = build_vec3(0.0f, 2.0f, 0.5f);
     painter->camera_fov = 45.0f;
@@ -144,23 +145,39 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     painter->uniform_buffer_object.view = look_at_z(painter->camera_position, target);
     painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 20.0f);
     painter->uniform_buffer_object.time = 1.0f;
+    for (Uint32 i=1; i<GRASS_INSTANCES; i++) {
+        float x = ((float) rand() / (float) RAND_MAX * 5.0f) - 2.5f;
+        float y = ((float) rand() / (float) RAND_MAX * 3.0f) - 1.5f;
+        float z = ((float) rand() / (float) RAND_MAX * 0.1f) - 0.05f;
+        for (Uint32 j=0; j<GRASS_NUM_VERTICES; j++) {
+            TutorialVertex vert = painter->vertices[j];
+            vert.pos.x += x;
+            vert.pos.y += y;
+            vert.pos.z += z;        
+            painter->vertices[i*GRASS_NUM_VERTICES + j] = vert;
+        }
+        for (Uint32 j=0; j<attrib.num_faces; j++) {
+            painter->indices[i*attrib.num_faces + j] = i*GRASS_NUM_VERTICES + painter->indices[j];
+        }
+    }
+
+    /*
     painter->instances = (vec3*) SDL_malloc(INSTANCE_COUNT * sizeof(vec3));
     for (Uint32 i=0; i<INSTANCE_COUNT; i++) {
         painter->instances[i].x = ((float) rand() / (float) RAND_MAX * 5.0f) - 2.5f;
         painter->instances[i].y = ((float) rand() / (float) RAND_MAX * 0.1f) - 0.05f;
         painter->instances[i].z = ((float) rand() / (float) RAND_MAX * 3.0f) - 1.5f;
     }
+    */
+    tinyobj_attrib_free(&attrib);
+    tinyobj_shapes_free(shapes, num_shapes);
+    tinyobj_materials_free(materials, num_materials);
     return SDL_TRUE;
 }
 
-SDL_bool painter_initialise(EsPainter* painter) {
+SDL_bool _painter_init_instance(EsPainter* painter) {
     VkResult result;
     SDL_bool sdl_result;
-
-    sdl_result = _painter_initialise_sdl_window(painter, "Easel");
-    if (!sdl_result) return SDL_FALSE;
-    sdl_result = _painter_load_data(painter);
-    if (!sdl_result) return SDL_FALSE;
 
     VkApplicationInfo app_info;
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -280,6 +297,19 @@ SDL_bool painter_initialise(EsPainter* painter) {
         return SDL_FALSE;
     }
 
+#if DEBUG_BUILD==SDL_TRUE
+    SDL_free((char*)validation_layers);
+#endif
+    SDL_free((char*)required_extensions);
+    SDL_free(available_extensions);
+
+    return SDL_TRUE;
+}
+
+SDL_bool _painter_select_physical_device(EsPainter* painter) {
+    VkResult result;
+    SDL_bool sdl_result;
+
     Uint32 device_count = 0;
     result = vkEnumeratePhysicalDevices(painter->instance, &device_count, NULL);
     if (result != VK_SUCCESS) {
@@ -325,13 +355,13 @@ SDL_bool painter_initialise(EsPainter* painter) {
     else if (counts & VK_SAMPLE_COUNT_4_BIT) { painter->msaa_samples = VK_SAMPLE_COUNT_4_BIT; }
     else if (counts & VK_SAMPLE_COUNT_2_BIT) { painter->msaa_samples = VK_SAMPLE_COUNT_2_BIT; }
     else painter->msaa_samples = VK_SAMPLE_COUNT_1_BIT;
+    SDL_free(devices);
+    return SDL_TRUE;
+}
 
-    sdl_result = _painter_create_swapchain(painter);
-    if (!sdl_result) {
-        // The error would be called from the _painter_create_swapchain method.
-        return SDL_FALSE;
-    }
-
+SDL_bool _painter_create_synchronisation_elements(EsPainter* painter) {
+    VkResult result;
+    SDL_bool sdl_result;
     SDL_Log("Creating Synchronisation Elements\n");
     // need to malloc here =P
     painter->image_available_semaphores = (VkSemaphore*) SDL_malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkSemaphore));
@@ -366,9 +396,29 @@ SDL_bool painter_initialise(EsPainter* painter) {
             return SDL_FALSE;
         }
     }
+    return SDL_TRUE; 
+}
+
+SDL_bool painter_initialise(EsPainter* painter) {
+    VkResult result;
+    SDL_bool sdl_result;
+
+    sdl_result = _painter_initialise_sdl_window(painter, "Easel");
+    if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_load_data(painter);
+    if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_init_instance(painter);
+    if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_select_physical_device(painter);
+    if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_create_swapchain(painter);
+    if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_create_synchronisation_elements(painter);
+    if (!sdl_result) return SDL_FALSE;
+
     painter->frame_index = 0;
     painter->buffer_resized = SDL_FALSE;
-
+    /*
     void* instance_data;
     result = vkMapMemory(painter->device, painter->instance_buffer_memory, 0, painter->instance_buffer_size, 0, &instance_data);
     if (result != VK_SUCCESS) {
@@ -378,13 +428,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
     }
     SDL_memcpy(instance_data, painter->instances, (size_t) painter->instance_buffer_size);
     vkUnmapMemory(painter->device, painter->instance_buffer_memory);
-
-#if DEBUG_BUILD==SDL_TRUE
-    SDL_free((char*)validation_layers);
-#endif
-    SDL_free(devices);
-    SDL_free((char*)required_extensions);
-    SDL_free(available_extensions);
+    */
 
     return SDL_TRUE;
 }
@@ -878,13 +922,8 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     vertex_input_binding_description.binding = 0;
     vertex_input_binding_description.stride = sizeof(TutorialVertex);
     vertex_input_binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    VkVertexInputBindingDescription instance_input_binding_description;
-    instance_input_binding_description.binding = 1;
-    instance_input_binding_description.stride = sizeof(vec3);
-    instance_input_binding_description.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
-    VkVertexInputBindingDescription vertex_binding_descriptions[2];
+    VkVertexInputBindingDescription vertex_binding_descriptions[1];
     vertex_binding_descriptions[0] = vertex_input_binding_description;
-    vertex_binding_descriptions[1] = instance_input_binding_description;
     VkVertexInputAttributeDescription vertex_input_attributes[4];
     vertex_input_attributes[0].location = 0;
     vertex_input_attributes[0].binding = 0;
@@ -898,10 +937,6 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     vertex_input_attributes[2].binding = 0;
     vertex_input_attributes[2].format = VK_FORMAT_R32G32_SFLOAT;
     vertex_input_attributes[2].offset = sizeof(vec3) + sizeof(vec3);
-    vertex_input_attributes[3].location = 3;
-    vertex_input_attributes[3].binding = 1;
-    vertex_input_attributes[3].format = VK_FORMAT_R32G32B32_SFLOAT;
-    vertex_input_attributes[3].offset = sizeof(vec3) + sizeof(vec3) + sizeof(vec2);
     VkPipelineShaderStageCreateInfo vertex_shader_stage_create_info;
     vertex_shader_stage_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     vertex_shader_stage_create_info.pNext = NULL;
@@ -925,7 +960,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     vertex_input_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertex_input_state_create_info.pNext = NULL;
     vertex_input_state_create_info.flags = 0;
-    vertex_input_state_create_info.vertexBindingDescriptionCount = 2;
+    vertex_input_state_create_info.vertexBindingDescriptionCount = 1;
     vertex_input_state_create_info.pVertexBindingDescriptions = vertex_binding_descriptions;
     vertex_input_state_create_info.vertexAttributeDescriptionCount = 4;
     vertex_input_state_create_info.pVertexAttributeDescriptions = vertex_input_attributes;
@@ -1223,13 +1258,6 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    painter->instance_buffer_size = INSTANCE_COUNT * sizeof(vec3);
-    sdl_result = _painter_create_buffer(painter, painter->instance_buffer_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &painter->instance_buffer, &painter->instance_buffer_memory);
-    if (!sdl_result) {
-        warehouse_error_popup("Error in Vulkan Setup.", "Could not create instance buffer");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
 
     painter->index_staging_buffer_size = painter->num_indices * sizeof(Uint32);
     VkMemoryPropertyFlags index_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -1375,7 +1403,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         render_pass_begin_info.renderArea.extent = swapchain_extent;
         
         VkClearValue clear_values[2];
-        VkClearColorValue color_value0 = { 0.0f, 0.0f, 0.0f, 1.0f };
+        VkClearColorValue color_value0 = { 1.0f, 0.0f, 0.0f, 1.0f };
         VkClearColorValue color_value1 = { 0.0f, 0.0f, 0.0f, 0.0f };
         VkClearDepthStencilValue depth_value0 = { 0.0f, 0 };
         VkClearDepthStencilValue depth_value1 = { 1.0f, 0 };
@@ -1394,10 +1422,9 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         vkCmdBeginRenderPass(painter->command_buffers[i], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->graphics_pipeline);
         vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
-        vkCmdBindVertexBuffers(painter->command_buffers[i], 1, 1, &painter->instance_buffer, offsets);
         vkCmdBindIndexBuffer(painter->command_buffers[i], painter->index_buffer, 0, VK_INDEX_TYPE_UINT32);
         vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->pipeline_layout, 0, 1, &painter->descriptor_sets[i], 0, NULL);
-        vkCmdDrawIndexed(painter->command_buffers[i], painter->num_indices, INSTANCE_COUNT, 0, 0, 0);
+        vkCmdDrawIndexed(painter->command_buffers[i], painter->num_indices, 1, 0, 0, 0);
         vkCmdEndRenderPass(painter->command_buffers[i]);
         result = vkEndCommandBuffer(painter->command_buffers[i]);
         if (result != VK_SUCCESS) {
@@ -1581,10 +1608,6 @@ void painter_cleanup(EsPainter* painter) {
             vkFreeMemory(painter->device, painter->uniform_buffers_memory[i], NULL);
     if (painter->descriptor_pool)
         vkDestroyDescriptorPool(painter->device, painter->descriptor_pool, NULL);
-    if (painter->instance_buffer)
-        vkDestroyBuffer(painter->device, painter->instance_buffer, NULL);
-    if (painter->instance_buffer_memory)
-        vkFreeMemory(painter->device, painter->instance_buffer_memory, NULL);
     if (painter->index_buffer)
         vkDestroyBuffer(painter->device, painter->index_buffer, NULL);
     if (painter->index_buffer_memory)
