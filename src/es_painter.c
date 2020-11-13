@@ -3,6 +3,8 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#define STB_PERLIN_IMPLEMENTATION
+#include "stb_perlin.h"
 #define TINYOBJ_LOADER_C_IMPLEMENTATION
 #include "tinyobj_loader_c.h"
 
@@ -30,7 +32,37 @@ SDL_bool _painter_load_data(EsPainter* painter);
 SDL_bool _painter_init_instance(EsPainter* painter);
 SDL_bool _painter_select_physical_device(EsPainter* painter);
 SDL_bool _painter_create_synchronisation_elements(EsPainter* painter);
+SDL_bool _painter_create_device_and_queues(EsPainter* painter);
+SDL_bool _painter_init_shader_data(ShaderData* shader);
 
+SDL_bool _painter_init_shader_data(ShaderData* shader) {
+    shader->vertices = NULL;
+    shader->indices = NULL;
+    shader->num_vertices = 0;
+    shader->num_indices = 0;
+    shader->mip_levels = 0;
+    shader->vertex_buffer_size = 0;
+    shader->vertex_staging_buffer_size = 0;
+    shader->index_buffer_size = 0;
+    shader->index_staging_buffer_size = 0;
+    shader->vertex_staging_buffer = NULL;
+    shader->vertex_staging_buffer_memory = NULL;
+    shader->index_staging_buffer = NULL;
+    shader->index_staging_buffer_memory = NULL;
+    shader->vertex_buffer = NULL;
+    shader->vertex_buffer_memory = NULL;
+    shader->index_buffer = NULL;
+    shader->index_buffer_memory = NULL;
+    shader->texture_image = NULL;
+    shader->texture_image_memory = NULL;
+    shader->texture_image_view = NULL;
+    shader->texture_sampler = NULL;
+    shader->color_image = NULL;
+    shader->color_image_memory = NULL;
+    shader->color_image_view = NULL;
+    shader->msaa_samples = NULL;
+    return SDL_TRUE;
+}
 
 static void _painter_read_obj_file(const char* filename, const int is_mtl, const char *obj_filename, char** data, size_t* len) {
     obj_filename;
@@ -113,10 +145,10 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    painter->num_vertices = attrib.num_vertices * GRASS_INSTANCES;
-    painter->vertices = (TutorialVertex*) SDL_malloc(painter->num_vertices * sizeof(TutorialVertex));
-    painter->num_indices = attrib.num_faces * GRASS_INSTANCES;
-    painter->indices = (Uint32*) SDL_malloc(painter->num_indices * sizeof(Uint32));
+    painter->grass_shader->num_vertices = attrib.num_vertices * GRASS_INSTANCES;
+    painter->grass_shader->vertices = (TutorialVertex*) SDL_malloc(painter->grass_shader->num_vertices * sizeof(TutorialVertex));
+    painter->grass_shader->num_indices = attrib.num_faces * GRASS_INSTANCES;
+    painter->grass_shader->indices = (Uint32*) SDL_malloc(painter->grass_shader->num_indices * sizeof(Uint32));
     if (num_shapes != 1) {
         warehouse_error_popup("Error in Setup.", "Currently only support obj with 1 shape");
         painter_cleanup(painter);
@@ -130,13 +162,13 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         vert.color.x = 0.0f;
         vert.color.y = 0.0f;
         vert.color.z = 0.0f;
-        painter->vertices[i] = vert;
+        painter->grass_shader->vertices[i] = vert;
     }
     for (Uint32 i=0; i<attrib.num_faces; i++) {
         tinyobj_vertex_index_t face = attrib.faces[i];
-        painter->indices[i] = face.v_idx;
-        painter->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
-        painter->vertices[face.v_idx].tex.y = 1.0f - attrib.texcoords[face.vt_idx*2 + 1];
+        painter->grass_shader->indices[i] = face.v_idx;
+        painter->grass_shader->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
+        painter->grass_shader->vertices[face.v_idx].tex.y = 1.0f - attrib.texcoords[face.vt_idx*2 + 1];
     }
     painter->uniform_buffer_object.model = identity_mat4();
     painter->camera_position = build_vec3(0.0f, 2.0f, 0.5f);
@@ -150,25 +182,18 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         float y = ((float) rand() / (float) RAND_MAX * 3.0f) - 1.5f;
         float z = ((float) rand() / (float) RAND_MAX * 0.1f) - 0.05f;
         for (Uint32 j=0; j<GRASS_NUM_VERTICES; j++) {
-            TutorialVertex vert = painter->vertices[j];
+            TutorialVertex vert = painter->grass_shader->vertices[j];
             vert.pos.x += x;
             vert.pos.y += y;
             vert.pos.z += z;        
-            painter->vertices[i*GRASS_NUM_VERTICES + j] = vert;
+            painter->grass_shader->vertices[i*GRASS_NUM_VERTICES + j] = vert;
         }
         for (Uint32 j=0; j<attrib.num_faces; j++) {
-            painter->indices[i*attrib.num_faces + j] = i*GRASS_NUM_VERTICES + painter->indices[j];
+            painter->grass_shader->indices[i*attrib.num_faces + j] = i*GRASS_NUM_VERTICES + painter->grass_shader->indices[j];
         }
     }
+    SDL_Log("perlin: %f", stb_perlin_noise3(0.01, 0.2, 2.1, 0, 0, 0));
 
-    /*
-    painter->instances = (vec3*) SDL_malloc(INSTANCE_COUNT * sizeof(vec3));
-    for (Uint32 i=0; i<INSTANCE_COUNT; i++) {
-        painter->instances[i].x = ((float) rand() / (float) RAND_MAX * 5.0f) - 2.5f;
-        painter->instances[i].y = ((float) rand() / (float) RAND_MAX * 0.1f) - 0.05f;
-        painter->instances[i].z = ((float) rand() / (float) RAND_MAX * 3.0f) - 1.5f;
-    }
-    */
     tinyobj_attrib_free(&attrib);
     tinyobj_shapes_free(shapes, num_shapes);
     tinyobj_materials_free(materials, num_materials);
@@ -348,13 +373,13 @@ SDL_bool _painter_select_physical_device(EsPainter* painter) {
     VkPhysicalDeviceProperties physical_device_properties;
     vkGetPhysicalDeviceProperties(painter->physical_device, &physical_device_properties);
     VkSampleCountFlags counts = physical_device_properties.limits.framebufferColorSampleCounts & physical_device_properties.limits.framebufferDepthSampleCounts;
-    if (counts & VK_SAMPLE_COUNT_64_BIT) { painter->msaa_samples = VK_SAMPLE_COUNT_64_BIT; }
-    else if (counts & VK_SAMPLE_COUNT_32_BIT) { painter->msaa_samples = VK_SAMPLE_COUNT_32_BIT; }
-    else if (counts & VK_SAMPLE_COUNT_16_BIT) { painter->msaa_samples = VK_SAMPLE_COUNT_16_BIT; }
-    else if (counts & VK_SAMPLE_COUNT_8_BIT) { painter->msaa_samples = VK_SAMPLE_COUNT_8_BIT; }
-    else if (counts & VK_SAMPLE_COUNT_4_BIT) { painter->msaa_samples = VK_SAMPLE_COUNT_4_BIT; }
-    else if (counts & VK_SAMPLE_COUNT_2_BIT) { painter->msaa_samples = VK_SAMPLE_COUNT_2_BIT; }
-    else painter->msaa_samples = VK_SAMPLE_COUNT_1_BIT;
+    if (counts & VK_SAMPLE_COUNT_64_BIT) { painter->grass_shader->msaa_samples = VK_SAMPLE_COUNT_64_BIT; }
+    else if (counts & VK_SAMPLE_COUNT_32_BIT) { painter->grass_shader->msaa_samples = VK_SAMPLE_COUNT_32_BIT; }
+    else if (counts & VK_SAMPLE_COUNT_16_BIT) { painter->grass_shader->msaa_samples = VK_SAMPLE_COUNT_16_BIT; }
+    else if (counts & VK_SAMPLE_COUNT_8_BIT) { painter->grass_shader->msaa_samples = VK_SAMPLE_COUNT_8_BIT; }
+    else if (counts & VK_SAMPLE_COUNT_4_BIT) { painter->grass_shader->msaa_samples = VK_SAMPLE_COUNT_4_BIT; }
+    else if (counts & VK_SAMPLE_COUNT_2_BIT) { painter->grass_shader->msaa_samples = VK_SAMPLE_COUNT_2_BIT; }
+    else painter->grass_shader->msaa_samples = VK_SAMPLE_COUNT_1_BIT;
     SDL_free(devices);
     return SDL_TRUE;
 }
@@ -405,6 +430,10 @@ SDL_bool painter_initialise(EsPainter* painter) {
 
     sdl_result = _painter_initialise_sdl_window(painter, "Easel");
     if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_init_shader_data(painter->grass_shader);
+    if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_init_shader_data(painter->skybox_shader);
+    if (!sdl_result) return SDL_FALSE;
     sdl_result = _painter_load_data(painter);
     if (!sdl_result) return SDL_FALSE;
     sdl_result = _painter_init_instance(painter);
@@ -418,17 +447,6 @@ SDL_bool painter_initialise(EsPainter* painter) {
 
     painter->frame_index = 0;
     painter->buffer_resized = SDL_FALSE;
-    /*
-    void* instance_data;
-    result = vkMapMemory(painter->device, painter->instance_buffer_memory, 0, painter->instance_buffer_size, 0, &instance_data);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Setup.", "Could not map instance memory");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    SDL_memcpy(instance_data, painter->instances, (size_t) painter->instance_buffer_size);
-    vkUnmapMemory(painter->device, painter->instance_buffer_memory);
-    */
 
     return SDL_TRUE;
 }
@@ -542,7 +560,6 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     }
 
     Uint32 queue_family_count = 0;
-    // This method does not return a VkResult
     vkGetPhysicalDeviceQueueFamilyProperties(painter->physical_device, &queue_family_count, NULL);
     SDL_Log("Found %i queue families.\n", queue_family_count);
     VkQueueFamilyProperties* queue_families = (VkQueueFamilyProperties*) SDL_malloc(queue_family_count * sizeof(VkQueueFamilyProperties));
@@ -568,8 +585,6 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         if (presentation_queue_family >= 0 && graphics_queue_family >= 0)
             break;
     }
-    SDL_Log("Graphics Queue Family is %i\n", graphics_queue_family);
-    SDL_Log("Presentation Queue Family is %i\n", presentation_queue_family);
     if (graphics_queue_family < 0) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not find queue family with graphics");
         painter_cleanup(painter);
@@ -748,6 +763,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
             return SDL_FALSE;
         }
     }
+
     // Find Supported Format for Depth Buffer
     // TODO (30 Oct 2020 sam): The depth_buffer stuff needs to be recreated on window resize
     VkFormat desired_formats[] = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
@@ -771,7 +787,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     VkAttachmentDescription color_attachment;
     color_attachment.flags = 0;
     color_attachment.format = swapchain_image_format;
-    color_attachment.samples = painter->msaa_samples;
+    color_attachment.samples = painter->grass_shader->msaa_samples;
     color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -781,7 +797,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     VkAttachmentDescription depth_attachment;
     depth_attachment.flags = 0;
     depth_attachment.format = depth_buffer_format;
-    depth_attachment.samples = painter->msaa_samples;
+    depth_attachment.samples = painter->grass_shader->msaa_samples;
     depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -807,17 +823,17 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     VkAttachmentReference color_resolve_attachment_reference;
     color_resolve_attachment_reference.attachment = 2;
     color_resolve_attachment_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    VkSubpassDescription subpass;
-    subpass.flags = 0;
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.inputAttachmentCount = 0;
-    subpass.pInputAttachments = NULL;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &color_attachment_reference;
-    subpass.pResolveAttachments = &color_resolve_attachment_reference;
-    subpass.pDepthStencilAttachment = &depth_attachment_reference;
-    subpass.preserveAttachmentCount = 0;
-    subpass.pPreserveAttachments = NULL;
+    VkSubpassDescription grass_subpass;
+    grass_subpass.flags = 0;
+    grass_subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    grass_subpass.inputAttachmentCount = 0;
+    grass_subpass.pInputAttachments = NULL;
+    grass_subpass.colorAttachmentCount = 1;
+    grass_subpass.pColorAttachments = &color_attachment_reference;
+    grass_subpass.pResolveAttachments = &color_resolve_attachment_reference;
+    grass_subpass.pDepthStencilAttachment = &depth_attachment_reference;
+    grass_subpass.preserveAttachmentCount = 0;
+    grass_subpass.pPreserveAttachments = NULL;
     VkSubpassDependency subpass_dependency;
     subpass_dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
     subpass_dependency.dstSubpass = 0;
@@ -837,7 +853,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     render_pass_create_info.attachmentCount = 3;
     render_pass_create_info.pAttachments = attachments;
     render_pass_create_info.subpassCount = 1;
-    render_pass_create_info.pSubpasses = &subpass;
+    render_pass_create_info.pSubpasses = &grass_subpass;
     render_pass_create_info.dependencyCount = 1;
     render_pass_create_info.pDependencies = &subpass_dependency;
     result = vkCreateRenderPass(painter->device, &render_pass_create_info, NULL, &painter->render_pass);
@@ -850,7 +866,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     SDL_Log("Loading shaders\n");
     Uint32* vertex_spirv;
     Sint64 vertex_shader_length;
-    vertex_shader_length = painter_read_shader_file("data/spirv/vertex.spv", &vertex_spirv);
+    vertex_shader_length = painter_read_shader_file("data/spirv/grass_vertex.spv", &vertex_spirv);
     if (vertex_shader_length < 0) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not read vertex shader.");
         painter_cleanup(painter);
@@ -870,7 +886,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     }
     Uint32* fragment_spirv;
     Sint64 fragment_shader_length;
-    fragment_shader_length = painter_read_shader_file("data/spirv/fragment.spv", &fragment_spirv);
+    fragment_shader_length = painter_read_shader_file("data/spirv/grass_fragment.spv", &fragment_spirv);
     if (fragment_shader_length < 0) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not read fragment shader.");
         painter_cleanup(painter);
@@ -1007,7 +1023,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     multisample_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisample_state_create_info.pNext = NULL;
     multisample_state_create_info.flags = 0;
-    multisample_state_create_info.rasterizationSamples = painter->msaa_samples;
+    multisample_state_create_info.rasterizationSamples = painter->grass_shader->msaa_samples;
     multisample_state_create_info.sampleShadingEnable = VK_TRUE;
     multisample_state_create_info.minSampleShading = 0.2f;
     multisample_state_create_info.pSampleMask = NULL;
@@ -1098,13 +1114,13 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         return SDL_FALSE;
     }
     
-    sdl_result = _painter_create_image(painter, swapchain_extent.width, swapchain_extent.height, 1, painter->msaa_samples, swapchain_image_format, VK_IMAGE_TILING_OPTIMAL,  VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->color_image, &painter->color_image_memory);
+    sdl_result = _painter_create_image(painter, swapchain_extent.width, swapchain_extent.height, 1, painter->grass_shader->msaa_samples, swapchain_image_format, VK_IMAGE_TILING_OPTIMAL,  VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->grass_shader->color_image, &painter->grass_shader->color_image_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create coloe image");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    sdl_result = _painter_create_image_view(painter, swapchain_image_format, VK_IMAGE_ASPECT_COLOR_BIT, 1, &painter->color_image, &painter->color_image_view);
+    sdl_result = _painter_create_image_view(painter, swapchain_image_format, VK_IMAGE_ASPECT_COLOR_BIT, 1, &painter->grass_shader->color_image, &painter->grass_shader->color_image_view);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create color image view");
         painter_cleanup(painter);
@@ -1112,7 +1128,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     }
 
 
-    sdl_result = _painter_create_image(painter, swapchain_extent.width, swapchain_extent.height, 1, painter->msaa_samples, depth_buffer_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->depth_image, &painter->depth_image_memory);
+    sdl_result = _painter_create_image(painter, swapchain_extent.width, swapchain_extent.height, 1, painter->grass_shader->msaa_samples, depth_buffer_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->depth_image, &painter->depth_image_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create depth image");
         painter_cleanup(painter);
@@ -1128,7 +1144,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     painter->swapchain_framebuffers = (VkFramebuffer*) SDL_malloc(painter->swapchain_image_count * sizeof(VkFramebuffer));
     for (Uint32 i=0; i<painter->swapchain_image_count; i++) {
         VkImageView image_view_attachments[3];
-        image_view_attachments[0] = painter->color_image_view;
+        image_view_attachments[0] = painter->grass_shader->color_image_view;
         image_view_attachments[1] = painter->depth_image_view;
         image_view_attachments[2] = painter->swapchain_image_views[i];
         VkFramebufferCreateInfo framebuffer_create_info;
@@ -1173,7 +1189,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    painter->mip_levels = (Uint32) (SDL_floor(warehouse_log_2(SDL_max(tex_width, tex_height))) + 1);
+    painter->grass_shader->mip_levels = (Uint32) (SDL_floor(warehouse_log_2(SDL_max(tex_width, tex_height))) + 1);
     VkDeviceSize tex_size = tex_width * tex_height * 4;
     VkBuffer tex_buffer;
     VkDeviceMemory tex_buffer_memory;
@@ -1190,22 +1206,22 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     vkUnmapMemory(painter->device, tex_buffer_memory);
     stbi_image_free(pixels);
 
-    sdl_result = _painter_create_image(painter, tex_width, tex_height, painter->mip_levels, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->texture_image, &painter->texture_image_memory);
+    sdl_result = _painter_create_image(painter, tex_width, tex_height, painter->grass_shader->mip_levels, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->grass_shader->texture_image, &painter->grass_shader->texture_image_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture image");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    sdl_result = _painter_transition_image_layout(painter, &painter->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, painter->mip_levels);
+    sdl_result = _painter_transition_image_layout(painter, &painter->grass_shader->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, painter->grass_shader->mip_levels);
     if (!sdl_result) return SDL_FALSE;
-    sdl_result = _painter_copy_buffer_to_image(painter, &tex_buffer, &painter->texture_image, tex_width, tex_height);
+    sdl_result = _painter_copy_buffer_to_image(painter, &tex_buffer, &painter->grass_shader->texture_image, tex_width, tex_height);
     if (!sdl_result) return SDL_FALSE;
     vkDestroyBuffer(painter->device, tex_buffer, NULL);
     vkFreeMemory(painter->device, tex_buffer_memory, NULL);
-    sdl_result = _painter_generate_mipmaps(painter, &painter->texture_image, VK_FORMAT_R8G8B8A8_SRGB, tex_width, tex_height, painter->mip_levels);
+    sdl_result = _painter_generate_mipmaps(painter, &painter->grass_shader->texture_image, VK_FORMAT_R8G8B8A8_SRGB, tex_width, tex_height, painter->grass_shader->mip_levels);
     if (!sdl_result) return SDL_FALSE;
 
-    sdl_result = _painter_create_image_view(painter, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, painter->mip_levels, &painter->texture_image, &painter->texture_image_view);
+    sdl_result = _painter_create_image_view(painter, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, painter->grass_shader->mip_levels, &painter->grass_shader->texture_image, &painter->grass_shader->texture_image_view);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture image view");
         painter_cleanup(painter);
@@ -1228,52 +1244,52 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     sampler_create_info.compareEnable = VK_FALSE;
     sampler_create_info.compareOp = VK_COMPARE_OP_ALWAYS;
     sampler_create_info.minLod = 0.0f;
-    sampler_create_info.maxLod = (float) painter->mip_levels;
+    sampler_create_info.maxLod = (float) painter->grass_shader->mip_levels;
     sampler_create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     sampler_create_info.unnormalizedCoordinates = VK_FALSE;
-    result = vkCreateSampler(painter->device, &sampler_create_info, NULL, &painter->texture_sampler);
+    result = vkCreateSampler(painter->device, &sampler_create_info, NULL, &painter->grass_shader->texture_sampler);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture image sampler");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
 
-    painter->vertex_staging_buffer_size = painter->num_vertices * sizeof(TutorialVertex);
+    painter->grass_shader->vertex_staging_buffer_size = painter->grass_shader->num_vertices * sizeof(TutorialVertex);
     VkMemoryPropertyFlags vertex_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
     // the offsets and things.
     SDL_Log("creating buffer 2\n");
-    sdl_result = _painter_create_buffer(painter, painter->vertex_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, vertex_staging_property_flags, &painter->vertex_staging_buffer, &painter->vertex_staging_buffer_memory);
+    sdl_result = _painter_create_buffer(painter, painter->grass_shader->vertex_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, vertex_staging_property_flags, &painter->grass_shader->vertex_staging_buffer, &painter->grass_shader->vertex_staging_buffer_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create staging buffer");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    painter->vertex_buffer_size = painter->num_vertices * sizeof(TutorialVertex);
+    painter->grass_shader->vertex_buffer_size = painter->grass_shader->num_vertices * sizeof(TutorialVertex);
     VkMemoryPropertyFlags vertex_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     SDL_Log("creating buffer 3\n");
-    sdl_result = _painter_create_buffer(painter, painter->vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertex_property_flags, &painter->vertex_buffer, &painter->vertex_buffer_memory);
+    sdl_result = _painter_create_buffer(painter, painter->grass_shader->vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertex_property_flags, &painter->grass_shader->vertex_buffer, &painter->grass_shader->vertex_buffer_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create vertex buffer");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
 
-    painter->index_staging_buffer_size = painter->num_indices * sizeof(Uint32);
+    painter->grass_shader->index_staging_buffer_size = painter->grass_shader->num_indices * sizeof(Uint32);
     VkMemoryPropertyFlags index_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
     // the offsets and things.
-    SDL_Log("num vertices = %i num indices = %i\n", painter->num_vertices, painter->num_indices);
-    sdl_result = _painter_create_buffer(painter, painter->index_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, index_staging_property_flags, &painter->index_staging_buffer, &painter->index_staging_buffer_memory);
+    SDL_Log("num vertices = %i num indices = %i\n", painter->grass_shader->num_vertices, painter->grass_shader->num_indices);
+    sdl_result = _painter_create_buffer(painter, painter->grass_shader->index_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, index_staging_property_flags, &painter->grass_shader->index_staging_buffer, &painter->grass_shader->index_staging_buffer_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create staging buffer");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    painter->index_buffer_size = painter->num_indices * sizeof(Uint32);
+    painter->grass_shader->index_buffer_size = painter->grass_shader->num_indices * sizeof(Uint32);
     VkMemoryPropertyFlags index_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     SDL_Log("creating buffer 5\n");
-    sdl_result = _painter_create_buffer(painter, painter->index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, index_property_flags, &painter->index_buffer, &painter->index_buffer_memory);
+    sdl_result = _painter_create_buffer(painter, painter->grass_shader->index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, index_property_flags, &painter->grass_shader->index_buffer, &painter->grass_shader->index_buffer_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create index buffer");
         painter_cleanup(painter);
@@ -1333,8 +1349,8 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         buffer_info.offset = 0;
         buffer_info.range = painter->uniform_buffer_size;
         VkDescriptorImageInfo image_info;
-        image_info.sampler = painter->texture_sampler;
-        image_info.imageView = painter->texture_image_view;
+        image_info.sampler = painter->grass_shader->texture_sampler;
+        image_info.imageView = painter->grass_shader->texture_image_view;
         image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         VkWriteDescriptorSet* descriptor_write = (VkWriteDescriptorSet*) SDL_malloc(2*sizeof(VkWriteDescriptorSet));
         descriptor_write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1388,11 +1404,11 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         VkBufferCopy vertex_buffer_copy_info;
         vertex_buffer_copy_info.srcOffset = 0;
         vertex_buffer_copy_info.dstOffset = 0;
-        vertex_buffer_copy_info.size = painter->vertex_staging_buffer_size;
+        vertex_buffer_copy_info.size = painter->grass_shader->vertex_staging_buffer_size;
         VkBufferCopy index_buffer_copy_info;
         index_buffer_copy_info.srcOffset = 0;
         index_buffer_copy_info.dstOffset = 0;
-        index_buffer_copy_info.size = painter->index_staging_buffer_size;
+        index_buffer_copy_info.size = painter->grass_shader->index_staging_buffer_size;
         VkRenderPassBeginInfo render_pass_begin_info;
         render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         render_pass_begin_info.pNext = NULL;
@@ -1414,17 +1430,17 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         render_pass_begin_info.clearValueCount = 2;
         render_pass_begin_info.pClearValues = clear_values;
         VkBuffer vertex_buffers[1];
-        vertex_buffers[0] = painter->vertex_buffer;
+        vertex_buffers[0] = painter->grass_shader->vertex_buffer;
         VkDeviceSize offsets[1];
         offsets[0] = 0;
-        vkCmdCopyBuffer(painter->command_buffers[i], painter->vertex_staging_buffer, painter->vertex_buffer, 1, &vertex_buffer_copy_info);
-        vkCmdCopyBuffer(painter->command_buffers[i], painter->index_staging_buffer, painter->index_buffer, 1, &index_buffer_copy_info);
+        vkCmdCopyBuffer(painter->command_buffers[i], painter->grass_shader->vertex_staging_buffer, painter->grass_shader->vertex_buffer, 1, &vertex_buffer_copy_info);
+        vkCmdCopyBuffer(painter->command_buffers[i], painter->grass_shader->index_staging_buffer, painter->grass_shader->index_buffer, 1, &index_buffer_copy_info);
         vkCmdBeginRenderPass(painter->command_buffers[i], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->graphics_pipeline);
         vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
-        vkCmdBindIndexBuffer(painter->command_buffers[i], painter->index_buffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdBindIndexBuffer(painter->command_buffers[i], painter->grass_shader->index_buffer, 0, VK_INDEX_TYPE_UINT32);
         vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->pipeline_layout, 0, 1, &painter->descriptor_sets[i], 0, NULL);
-        vkCmdDrawIndexed(painter->command_buffers[i], painter->num_indices, 1, 0, 0, 0);
+        vkCmdDrawIndexed(painter->command_buffers[i], painter->grass_shader->num_indices, 1, 0, 0, 0);
         vkCmdEndRenderPass(painter->command_buffers[i]);
         result = vkEndCommandBuffer(painter->command_buffers[i]);
         if (result != VK_SUCCESS) {
@@ -1454,27 +1470,25 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     VkResult result;
     SDL_bool sdl_result;
 
-    // painter->vertices[0].color.x += 0.00001;
-    // painter->vertices[1].pos.x += 0.00001;
     void* vertex_staging_data;
-    result = vkMapMemory(painter->device, painter->vertex_staging_buffer_memory, 0, painter->vertex_staging_buffer_size, 0, &vertex_staging_data);
+    result = vkMapMemory(painter->device, painter->grass_shader->vertex_staging_buffer_memory, 0, painter->grass_shader->vertex_staging_buffer_size, 0, &vertex_staging_data);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Rendering.", "Could not map staging buffer memory");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    SDL_memcpy(vertex_staging_data, painter->vertices, (size_t) painter->vertex_staging_buffer_size);
-    vkUnmapMemory(painter->device, painter->vertex_staging_buffer_memory);
+    SDL_memcpy(vertex_staging_data, painter->grass_shader->vertices, (size_t) painter->grass_shader->vertex_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->grass_shader->vertex_staging_buffer_memory);
 
     void* index_staging_data;
-    result = vkMapMemory(painter->device, painter->index_staging_buffer_memory, 0, painter->index_staging_buffer_size, 0, &index_staging_data);
+    result = vkMapMemory(painter->device, painter->grass_shader->index_staging_buffer_memory, 0, painter->grass_shader->index_staging_buffer_size, 0, &index_staging_data);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Rendering.", "Could not map staging buffer memory");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    SDL_memcpy(index_staging_data, painter->indices, (size_t) painter->index_staging_buffer_size);
-    vkUnmapMemory(painter->device, painter->index_staging_buffer_memory);
+    SDL_memcpy(index_staging_data, painter->grass_shader->indices, (size_t) painter->grass_shader->index_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->grass_shader->index_staging_buffer_memory);
 
     vkWaitForFences(painter->device, 1, &painter->in_flight_fences[painter->frame_index], VK_TRUE, UINT64_MAX);
     result = vkAcquireNextImageKHR(painter->device, painter->swapchain, UINT64_MAX, painter->image_available_semaphores[painter->frame_index], VK_NULL_HANDLE, &image_index);
@@ -1561,26 +1575,26 @@ void _painter_cleanup_swapchain(EsPainter* painter) {
     }
     if (painter->command_buffers)
         vkFreeCommandBuffers(painter->device, painter->command_pool, painter->swapchain_image_count, painter->command_buffers);
-    if (painter->texture_sampler)
-        vkDestroySampler(painter->device, painter->texture_sampler, NULL);
-    if (painter->texture_image_view)
-        vkDestroyImageView(painter->device, painter->texture_image_view, NULL);
-    if (painter->texture_image)
-        vkDestroyImage(painter->device, painter->texture_image, NULL);
-    if (painter->texture_image_memory)
-        vkFreeMemory(painter->device, painter->texture_image_memory, NULL);
+    if (painter->grass_shader->texture_sampler)
+        vkDestroySampler(painter->device, painter->grass_shader->texture_sampler, NULL);
+    if (painter->grass_shader->texture_image_view)
+        vkDestroyImageView(painter->device, painter->grass_shader->texture_image_view, NULL);
+    if (painter->grass_shader->texture_image)
+        vkDestroyImage(painter->device, painter->grass_shader->texture_image, NULL);
+    if (painter->grass_shader->texture_image_memory)
+        vkFreeMemory(painter->device, painter->grass_shader->texture_image_memory, NULL);
     if (painter->depth_image_view)
         vkDestroyImageView(painter->device, painter->depth_image_view, NULL);
     if (painter->depth_image)
         vkDestroyImage(painter->device, painter->depth_image, NULL);
     if (painter->depth_image_memory)
         vkFreeMemory(painter->device, painter->depth_image_memory, NULL);
-    if (painter->color_image_view)
-        vkDestroyImageView(painter->device, painter->color_image_view, NULL);
-    if (painter->color_image)
-        vkDestroyImage(painter->device, painter->color_image, NULL);
-    if (painter->color_image_memory)
-        vkFreeMemory(painter->device, painter->color_image_memory, NULL);
+    if (painter->grass_shader->color_image_view)
+        vkDestroyImageView(painter->device, painter->grass_shader->color_image_view, NULL);
+    if (painter->grass_shader->color_image)
+        vkDestroyImage(painter->device, painter->grass_shader->color_image, NULL);
+    if (painter->grass_shader->color_image_memory)
+        vkFreeMemory(painter->device, painter->grass_shader->color_image_memory, NULL);
     if (painter->graphics_pipeline)
         vkDestroyPipeline(painter->device, painter->graphics_pipeline, NULL);
     if (painter->descriptor_set_layout)
@@ -1608,22 +1622,22 @@ void painter_cleanup(EsPainter* painter) {
             vkFreeMemory(painter->device, painter->uniform_buffers_memory[i], NULL);
     if (painter->descriptor_pool)
         vkDestroyDescriptorPool(painter->device, painter->descriptor_pool, NULL);
-    if (painter->index_buffer)
-        vkDestroyBuffer(painter->device, painter->index_buffer, NULL);
-    if (painter->index_buffer_memory)
-        vkFreeMemory(painter->device, painter->index_buffer_memory, NULL);
-    if (painter->index_staging_buffer)
-        vkDestroyBuffer(painter->device, painter->index_staging_buffer, NULL);
-    if (painter->index_staging_buffer_memory)
-        vkFreeMemory(painter->device, painter->index_staging_buffer_memory, NULL);
-    if (painter->vertex_buffer)
-        vkDestroyBuffer(painter->device, painter->vertex_buffer, NULL);
-    if (painter->vertex_buffer_memory)
-        vkFreeMemory(painter->device, painter->vertex_buffer_memory, NULL);
-    if (painter->vertex_staging_buffer)
-        vkDestroyBuffer(painter->device, painter->vertex_staging_buffer, NULL);
-    if (painter->vertex_staging_buffer_memory)
-        vkFreeMemory(painter->device, painter->vertex_staging_buffer_memory, NULL);
+    if (painter->grass_shader->index_buffer)
+        vkDestroyBuffer(painter->device, painter->grass_shader->index_buffer, NULL);
+    if (painter->grass_shader->index_buffer_memory)
+        vkFreeMemory(painter->device, painter->grass_shader->index_buffer_memory, NULL);
+    if (painter->grass_shader->index_staging_buffer)
+        vkDestroyBuffer(painter->device, painter->grass_shader->index_staging_buffer, NULL);
+    if (painter->grass_shader->index_staging_buffer_memory)
+        vkFreeMemory(painter->device, painter->grass_shader->index_staging_buffer_memory, NULL);
+    if (painter->grass_shader->vertex_buffer)
+        vkDestroyBuffer(painter->device, painter->grass_shader->vertex_buffer, NULL);
+    if (painter->grass_shader->vertex_buffer_memory)
+        vkFreeMemory(painter->device, painter->grass_shader->vertex_buffer_memory, NULL);
+    if (painter->grass_shader->vertex_staging_buffer)
+        vkDestroyBuffer(painter->device, painter->grass_shader->vertex_staging_buffer, NULL);
+    if (painter->grass_shader->vertex_staging_buffer_memory)
+        vkFreeMemory(painter->device, painter->grass_shader->vertex_staging_buffer_memory, NULL);
     if (painter->in_flight_fences)
         for (Uint32 i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
             vkDestroyFence(painter->device, painter->in_flight_fences[i], NULL);
