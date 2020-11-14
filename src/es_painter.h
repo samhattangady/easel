@@ -39,6 +39,8 @@ typedef struct {
     VkDeviceMemory color_image_memory;
     VkImageView color_image_view;
     VkSampleCountFlagBits msaa_samples;
+    VkShaderModule vertex_shader_module;
+    VkShaderModule fragment_shader_module;
 } ShaderData;
 
 typedef struct {
@@ -51,8 +53,6 @@ typedef struct {
     Uint32 swapchain_image_count;
     Uint32 frame_index;
     VkImageView* swapchain_image_views;
-    VkShaderModule vertex_shader_module;
-    VkShaderModule fragment_shader_module;
     VkDescriptorSetLayout descriptor_set_layout;
     VkPipelineLayout pipeline_layout;
     VkRenderPass render_pass;

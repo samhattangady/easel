@@ -33,36 +33,6 @@ SDL_bool _painter_init_instance(EsPainter* painter);
 SDL_bool _painter_select_physical_device(EsPainter* painter);
 SDL_bool _painter_create_synchronisation_elements(EsPainter* painter);
 SDL_bool _painter_create_device_and_queues(EsPainter* painter);
-SDL_bool _painter_init_shader_data(ShaderData* shader);
-
-SDL_bool _painter_init_shader_data(ShaderData* shader) {
-    shader->vertices = NULL;
-    shader->indices = NULL;
-    shader->num_vertices = 0;
-    shader->num_indices = 0;
-    shader->mip_levels = 0;
-    shader->vertex_buffer_size = 0;
-    shader->vertex_staging_buffer_size = 0;
-    shader->index_buffer_size = 0;
-    shader->index_staging_buffer_size = 0;
-    shader->vertex_staging_buffer = NULL;
-    shader->vertex_staging_buffer_memory = NULL;
-    shader->index_staging_buffer = NULL;
-    shader->index_staging_buffer_memory = NULL;
-    shader->vertex_buffer = NULL;
-    shader->vertex_buffer_memory = NULL;
-    shader->index_buffer = NULL;
-    shader->index_buffer_memory = NULL;
-    shader->texture_image = NULL;
-    shader->texture_image_memory = NULL;
-    shader->texture_image_view = NULL;
-    shader->texture_sampler = NULL;
-    shader->color_image = NULL;
-    shader->color_image_memory = NULL;
-    shader->color_image_view = NULL;
-    shader->msaa_samples = NULL;
-    return SDL_TRUE;
-}
 
 static void _painter_read_obj_file(const char* filename, const int is_mtl, const char *obj_filename, char** data, size_t* len) {
     obj_filename;
@@ -430,10 +400,8 @@ SDL_bool painter_initialise(EsPainter* painter) {
 
     sdl_result = _painter_initialise_sdl_window(painter, "Easel");
     if (!sdl_result) return SDL_FALSE;
-    sdl_result = _painter_init_shader_data(painter->grass_shader);
-    if (!sdl_result) return SDL_FALSE;
-    sdl_result = _painter_init_shader_data(painter->skybox_shader);
-    if (!sdl_result) return SDL_FALSE;
+    painter->grass_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
+    painter->skybox_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
     sdl_result = _painter_load_data(painter);
     if (!sdl_result) return SDL_FALSE;
     sdl_result = _painter_init_instance(painter);
@@ -878,7 +846,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     vertex_shader_module_create_info.flags = 0;
     vertex_shader_module_create_info.codeSize = vertex_shader_length;
     vertex_shader_module_create_info.pCode = vertex_spirv;
-    result = vkCreateShaderModule(painter->device, &vertex_shader_module_create_info, NULL, &painter->vertex_shader_module);
+    result = vkCreateShaderModule(painter->device, &vertex_shader_module_create_info, NULL, &painter->grass_shader->vertex_shader_module);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create vertex shader module.");
         painter_cleanup(painter);
@@ -898,7 +866,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     fragment_shader_module_create_info.flags = 0;
     fragment_shader_module_create_info.codeSize = fragment_shader_length;
     fragment_shader_module_create_info.pCode = fragment_spirv;
-    result = vkCreateShaderModule(painter->device, &fragment_shader_module_create_info, NULL, &painter->fragment_shader_module);
+    result = vkCreateShaderModule(painter->device, &fragment_shader_module_create_info, NULL, &painter->grass_shader->fragment_shader_module);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create fragment shader module.");
         painter_cleanup(painter);
@@ -958,7 +926,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     vertex_shader_stage_create_info.pNext = NULL;
     vertex_shader_stage_create_info.flags = 0;
     vertex_shader_stage_create_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertex_shader_stage_create_info.module = painter->vertex_shader_module;
+    vertex_shader_stage_create_info.module = painter->grass_shader->vertex_shader_module;
     vertex_shader_stage_create_info.pName = "main";
     vertex_shader_stage_create_info.pSpecializationInfo = NULL;
     VkPipelineShaderStageCreateInfo fragment_shader_stage_create_info;
@@ -966,7 +934,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     fragment_shader_stage_create_info.pNext = NULL;
     fragment_shader_stage_create_info.flags = 0;
     fragment_shader_stage_create_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragment_shader_stage_create_info.module = painter->fragment_shader_module;
+    fragment_shader_stage_create_info.module = painter->grass_shader->fragment_shader_module;
     fragment_shader_stage_create_info.pName = "main";
     fragment_shader_stage_create_info.pSpecializationInfo = NULL;
     VkPipelineShaderStageCreateInfo shader_stages[2];
@@ -1649,10 +1617,10 @@ void painter_cleanup(EsPainter* painter) {
             vkDestroySemaphore(painter->device, painter->render_finished_semaphores[i], NULL);
     if (painter->command_pool)
         vkDestroyCommandPool(painter->device, painter->command_pool, NULL);
-    if (painter->vertex_shader_module)
-        vkDestroyShaderModule(painter->device, painter->vertex_shader_module, NULL);
-    if (painter->fragment_shader_module)
-        vkDestroyShaderModule(painter->device, painter->fragment_shader_module, NULL);
+    if (painter->grass_shader->vertex_shader_module)
+        vkDestroyShaderModule(painter->device, painter->grass_shader->vertex_shader_module, NULL);
+    if (painter->grass_shader->fragment_shader_module)
+        vkDestroyShaderModule(painter->device, painter->grass_shader->fragment_shader_module, NULL);
     if (painter->device) {
         vkDeviceWaitIdle(painter->device);
         vkDestroyDevice(painter->device, NULL);
