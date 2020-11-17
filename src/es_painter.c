@@ -15,21 +15,28 @@
 #define GRASS_MODEL_PATH "data/obj/grass3.obj"
 #define GRASS_MODEL_TEXTURE_PATH "data/img/grass3.png"
 #define SKYBOX_MODEL_PATH "data/obj/skybox.obj"
-#define SKYBOX_MODEL_TEXTURE_PATH "data/img/skybox/front.jng"
+#define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skybox/front.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skybox/back.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH2 "data/img/skybox/top.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skybox/bottom.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skybox/right.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skybox/left.jpg"
 
 
 void _painter_cleanup_swapchain(EsPainter* painter);
+void _painter_shader_cleanup(EsPainter* painter, ShaderData* shader);
 SDL_bool _painter_create_swapchain(EsPainter* painter);
 SDL_bool _painter_recreate_swapchain(EsPainter* painter);
 SDL_bool _painter_create_buffer(EsPainter* painter, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer* buffer, VkDeviceMemory* bufferMemory);
 Uint32 _painter_find_memory_type(EsPainter* painter, VkMemoryPropertyFlags property_flags, VkMemoryRequirements* memory_requirements);
-SDL_bool _painter_transition_image_layout(EsPainter* painter, VkImage* image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout, Uint32 mip_levels);
+SDL_bool _painter_transition_image_layout(EsPainter* painter, VkImage* image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout, Uint32 mip_levels, Uint32 layer_count);
 SDL_bool _painter_copy_buffer_to_image(EsPainter* painter, VkBuffer* buffer, VkImage* image, Uint32 width, Uint32 height);
-SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, Uint32 mip_levels, VkSampleCountFlagBits num_samples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory);
-SDL_bool _painter_create_image_view(EsPainter* painter, VkFormat format, VkImageAspectFlags aspect_flags, Uint32 mip_levels, VkImage* image, VkImageView* image_view);
+SDL_bool _painter_copy_cubemap_buffer_to_image(EsPainter* painter, VkBuffer* buffer, VkImage* image, Uint32 width, Uint32 height);
+SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, Uint32 mip_levels, VkSampleCountFlagBits num_samples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory, Uint32 array_layers, SDL_bool is_cube);
+SDL_bool _painter_create_image_view(EsPainter* painter, VkFormat format, VkImageAspectFlags aspect_flags, VkImageViewType image_view_type, Uint32 mip_levels, VkImage* image, VkImageView* image_view);
 VkCommandBuffer _painter_begin_single_use_command_buffer(EsPainter* painter);
 SDL_bool _painter_end_single_use_command_buffer(EsPainter* painter, VkCommandBuffer* command_buffer);
-SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat image_format, Uint32 width, Uint32 height, Uint32 mip_levels);
+SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat image_format, Uint32 width, Uint32 height, Uint32 mip_levels, SDL_bool is_cubemap);
 SDL_bool _painter_initialise_sdl_window(EsPainter* painter, const char* window_name);
 SDL_bool _painter_load_data(EsPainter* painter);
 SDL_bool _painter_init_instance(EsPainter* painter);
@@ -114,8 +121,9 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     tinyobj_material_t* materials = NULL;
     size_t num_materials;
     Uint32 flags = TINYOBJ_FLAG_TRIANGULATE;
-    int ret = tinyobj_parse_obj(&attrib, &shapes, &num_shapes, &materials,
-                                &num_materials, GRASS_MODEL_PATH, _painter_read_obj_file, flags);
+    int ret;
+    ret = tinyobj_parse_obj(&attrib, &shapes, &num_shapes, &materials,
+                            &num_materials, GRASS_MODEL_PATH, _painter_read_obj_file, flags);
     if (ret != TINYOBJ_SUCCESS) {
         warehouse_error_popup("Error in Setup.", "Could not load model");
         painter_cleanup(painter);
@@ -146,13 +154,6 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         painter->grass_shader->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
         painter->grass_shader->vertices[face.v_idx].tex.y = 1.0f - attrib.texcoords[face.vt_idx*2 + 1];
     }
-    painter->uniform_buffer_object.model = identity_mat4();
-    painter->camera_position = build_vec3(0.0f, 2.0f, 0.5f);
-    painter->camera_fov = 45.0f;
-    vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
-    painter->uniform_buffer_object.view = look_at_z(painter->camera_position, target);
-    painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 20.0f);
-    painter->uniform_buffer_object.time = 1.0f;
     for (Uint32 i=1; i<GRASS_INSTANCES; i++) {
         float x = ((float) rand() / (float) RAND_MAX * 3.0f) - 1.5f;
         float y = ((float) rand() / (float) RAND_MAX * 3.0f) - 1.5f;
@@ -169,6 +170,51 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         }
     }
     // SDL_Log("perlin: %f", stb_perlin_noise3(0.01, 0.2, 2.1, 0, 0, 0));
+
+    tinyobj_attrib_free(&attrib);
+    tinyobj_shapes_free(shapes, num_shapes);
+    tinyobj_materials_free(materials, num_materials);
+
+    ret = tinyobj_parse_obj(&attrib, &shapes, &num_shapes, &materials,
+                            &num_materials, SKYBOX_MODEL_PATH, _painter_read_obj_file, flags);
+    if (ret != TINYOBJ_SUCCESS) {
+        warehouse_error_popup("Error in Setup.", "Could not load model");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    painter->skybox_shader->num_vertices = attrib.num_vertices;
+    painter->skybox_shader->vertices = (TutorialVertex*) SDL_malloc(painter->skybox_shader->num_vertices * sizeof(TutorialVertex));
+    painter->skybox_shader->num_indices = attrib.num_faces;
+    painter->skybox_shader->indices = (Uint32*) SDL_malloc(painter->skybox_shader->num_indices * sizeof(Uint32));
+    if (num_shapes != 1) {
+        warehouse_error_popup("Error in Setup.", "Currently only support obj with 1 shape");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    for (Uint32 i=0; i<attrib.num_vertices; i++) {
+        TutorialVertex vert;
+        vert.pos.x = attrib.vertices[i*3 + 0];
+        vert.pos.y = attrib.vertices[i*3 + 1];
+        vert.pos.z = attrib.vertices[i*3 + 2];
+        vert.color.x = 0.0f;
+        vert.color.y = 0.0f;
+        vert.color.z = 0.0f;
+        painter->skybox_shader->vertices[i] = vert;
+    }
+    for (Uint32 i=0; i<attrib.num_faces; i++) {
+        tinyobj_vertex_index_t face = attrib.faces[i];
+        painter->skybox_shader->indices[i] = face.v_idx;
+        painter->skybox_shader->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
+        painter->skybox_shader->vertices[face.v_idx].tex.y = 1.0f - attrib.texcoords[face.vt_idx*2 + 1];
+    }
+
+    painter->uniform_buffer_object.model = identity_mat4();
+    painter->camera_position = build_vec3(0.0f, 5.0f, 0.5f);
+    painter->camera_fov = 45.0f;
+    vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
+    painter->uniform_buffer_object.view = look_at_z(painter->camera_position, target);
+    painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 20.0f);
+    painter->uniform_buffer_object.time = 1.0f;
 
     tinyobj_attrib_free(&attrib);
     tinyobj_shapes_free(shapes, num_shapes);
@@ -839,32 +885,38 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
 
     sdl_result = _painter_load_shaders(painter, painter->grass_shader, "data/spirv/grass_vertex.spv", "data/spirv/grass_fragment.spv");
     if (!sdl_result) return SDL_FALSE;
-
     sdl_result = _painter_create_descriptor_set_layout(painter, painter->grass_shader);
     if (!sdl_result) return SDL_FALSE;
     sdl_result = _painter_create_pipeline(painter, painter->grass_shader);
     if (!sdl_result) return SDL_FALSE;
 
-    sdl_result = _painter_create_image(painter, painter->swapchain_extent.width, painter->swapchain_extent.height, 1, painter->msaa_samples, swapchain_image_format, VK_IMAGE_TILING_OPTIMAL,  VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->grass_shader->color_image, &painter->grass_shader->color_image_memory);
+    sdl_result = _painter_load_shaders(painter, painter->skybox_shader, "data/spirv/skybox_vertex.spv", "data/spirv/skybox_fragment.spv");
+    if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_create_descriptor_set_layout(painter, painter->skybox_shader);
+    if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_create_pipeline(painter, painter->skybox_shader);
+    if (!sdl_result) return SDL_FALSE;
+
+    sdl_result = _painter_create_image(painter, painter->swapchain_extent.width, painter->swapchain_extent.height, 1, painter->msaa_samples, swapchain_image_format, VK_IMAGE_TILING_OPTIMAL,  VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->grass_shader->color_image, &painter->grass_shader->color_image_memory, 1, SDL_FALSE);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create coloe image");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    sdl_result = _painter_create_image_view(painter, swapchain_image_format, VK_IMAGE_ASPECT_COLOR_BIT, 1, &painter->grass_shader->color_image, &painter->grass_shader->color_image_view);
+    sdl_result = _painter_create_image_view(painter, swapchain_image_format, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, 1, &painter->grass_shader->color_image, &painter->grass_shader->color_image_view);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create color image view");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
 
-    sdl_result = _painter_create_image(painter, painter->swapchain_extent.width, painter->swapchain_extent.height, 1, painter->msaa_samples, depth_buffer_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->depth_image, &painter->depth_image_memory);
+    sdl_result = _painter_create_image(painter, painter->swapchain_extent.width, painter->swapchain_extent.height, 1, painter->msaa_samples, depth_buffer_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->depth_image, &painter->depth_image_memory, 1, SDL_FALSE);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create depth image");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    sdl_result = _painter_create_image_view(painter, depth_buffer_format, VK_IMAGE_ASPECT_DEPTH_BIT, 1, &painter->depth_image, &painter->depth_image_view);
+    sdl_result = _painter_create_image_view(painter, depth_buffer_format, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_VIEW_TYPE_2D, 1, &painter->depth_image, &painter->depth_image_view);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create depth image view");
         painter_cleanup(painter);
@@ -906,56 +958,67 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         return SDL_FALSE;
     }
 
-    sdl_result = _painter_transition_image_layout(painter, &painter->depth_image, depth_buffer_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1);
+    sdl_result = _painter_transition_image_layout(painter, &painter->depth_image, depth_buffer_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1, 1);
     if (!sdl_result) return SDL_FALSE;
 
     int tex_width;
     int tex_height;
     int tex_channels;
-    stbi_uc* pixels = stbi_load(GRASS_MODEL_TEXTURE_PATH, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+    unsigned char* tex_data;
+    VkBuffer grass_tex_buffer;
+    VkBuffer skybox_tex_buffer;
+    VkDeviceMemory tex_buffer_memory;
+    VkDeviceSize tex_size;
+    stbi_uc* pixels;
+
+    SDL_Log("loading grass texture\n");
+    pixels = stbi_load(GRASS_MODEL_TEXTURE_PATH, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
     if (!pixels) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not load texture");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
     painter->grass_shader->mip_levels = (Uint32) (SDL_floor(warehouse_log_2(SDL_max((float) tex_width, (float) tex_height))) + 1.0f);
-    VkDeviceSize tex_size = tex_width * tex_height * 4;
-    VkBuffer tex_buffer;
-    VkDeviceMemory tex_buffer_memory;
-    sdl_result = _painter_create_buffer(painter, tex_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &tex_buffer, &tex_buffer_memory);
+    tex_size = tex_width * tex_height * 4;
+    sdl_result = _painter_create_buffer(painter, tex_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &grass_tex_buffer, &tex_buffer_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture buffer");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    void* tex_data;
     vkMapMemory(painter->device, tex_buffer_memory, 0, tex_size, 0, &tex_data);
     SDL_memcpy(tex_data, pixels, tex_size);
     vkUnmapMemory(painter->device, tex_buffer_memory);
     stbi_image_free(pixels);
 
-    sdl_result = _painter_create_image(painter, tex_width, tex_height, painter->grass_shader->mip_levels, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->grass_shader->texture_image, &painter->grass_shader->texture_image_memory);
+    SDL_Log("creating grass images\n");
+    sdl_result = _painter_create_image(painter, tex_width, tex_height, painter->grass_shader->mip_levels, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->grass_shader->texture_image, &painter->grass_shader->texture_image_memory, 1, SDL_FALSE);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture image");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    sdl_result = _painter_transition_image_layout(painter, &painter->grass_shader->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, painter->grass_shader->mip_levels);
+    SDL_Log("2 creating grass images\n");
+    sdl_result = _painter_transition_image_layout(painter, &painter->grass_shader->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, painter->grass_shader->mip_levels, 1);
     if (!sdl_result) return SDL_FALSE;
-    sdl_result = _painter_copy_buffer_to_image(painter, &tex_buffer, &painter->grass_shader->texture_image, tex_width, tex_height);
+    SDL_Log("3 creating grass images\n");
+    sdl_result = _painter_copy_buffer_to_image(painter, &grass_tex_buffer, &painter->grass_shader->texture_image, tex_width, tex_height);
     if (!sdl_result) return SDL_FALSE;
-    vkDestroyBuffer(painter->device, tex_buffer, NULL);
+    SDL_Log("4 creating grass images\n");
+    vkDestroyBuffer(painter->device, grass_tex_buffer, NULL);
     vkFreeMemory(painter->device, tex_buffer_memory, NULL);
-    sdl_result = _painter_generate_mipmaps(painter, &painter->grass_shader->texture_image, VK_FORMAT_R8G8B8A8_SRGB, tex_width, tex_height, painter->grass_shader->mip_levels);
+    SDL_Log("5 creating grass images\n");
+    sdl_result = _painter_generate_mipmaps(painter, &painter->grass_shader->texture_image, VK_FORMAT_R8G8B8A8_SRGB, tex_width, tex_height, painter->grass_shader->mip_levels, SDL_FALSE);
     if (!sdl_result) return SDL_FALSE;
-
-    sdl_result = _painter_create_image_view(painter, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, painter->grass_shader->mip_levels, &painter->grass_shader->texture_image, &painter->grass_shader->texture_image_view);
+    SDL_Log("6 creating grass images\n");
+    sdl_result = _painter_create_image_view(painter, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, painter->grass_shader->mip_levels, &painter->grass_shader->texture_image, &painter->grass_shader->texture_image_view);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture image view");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
 
+    SDL_Log("creating grass sampler\n");
     VkSamplerCreateInfo sampler_create_info;
     sampler_create_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     sampler_create_info.pNext = NULL;
@@ -982,6 +1045,88 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         return SDL_FALSE;
     }
 
+    SDL_Log("loading skybox texture\n");
+    unsigned char* skybox_pixels[6];
+    skybox_pixels[0] = stbi_load(SKYBOX_MODEL_TEXTURE_PATH0, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+    skybox_pixels[1] = stbi_load(SKYBOX_MODEL_TEXTURE_PATH1, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+    skybox_pixels[2] = stbi_load(SKYBOX_MODEL_TEXTURE_PATH2, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+    skybox_pixels[3] = stbi_load(SKYBOX_MODEL_TEXTURE_PATH3, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+    skybox_pixels[4] = stbi_load(SKYBOX_MODEL_TEXTURE_PATH4, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+    skybox_pixels[5] = stbi_load(SKYBOX_MODEL_TEXTURE_PATH5, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+    if (!skybox_pixels[0] || !skybox_pixels[1] || !skybox_pixels[2] || !skybox_pixels[3] || !skybox_pixels[4] || !skybox_pixels[5]) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not load texture");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    painter->skybox_shader->mip_levels = (Uint32) (SDL_floor(warehouse_log_2(SDL_max((float) tex_width, (float) tex_height))) + 1.0f);
+    SDL_Log("skybox shader mip levels: %i\n", painter->skybox_shader->mip_levels);
+    tex_size = tex_width * tex_height * 4;
+    sdl_result = _painter_create_buffer(painter, tex_size*6, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &skybox_tex_buffer, &tex_buffer_memory);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture buffer");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    vkMapMemory(painter->device, tex_buffer_memory, 0, tex_size*6, 0, &tex_data);
+    for (Uint32 i=0; i<6; i++)
+        SDL_memcpy(tex_data + (tex_size*i), skybox_pixels[i], tex_size);
+    vkUnmapMemory(painter->device, tex_buffer_memory);
+    stbi_image_free(skybox_pixels[0]);
+    stbi_image_free(skybox_pixels[1]);
+    stbi_image_free(skybox_pixels[2]);
+    stbi_image_free(skybox_pixels[3]);
+    stbi_image_free(skybox_pixels[4]);
+    stbi_image_free(skybox_pixels[5]);
+
+    SDL_Log("creating skybox images\n");
+    sdl_result = _painter_create_image(painter, tex_width, tex_height, painter->skybox_shader->mip_levels, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->skybox_shader->texture_image, &painter->skybox_shader->texture_image_memory, 6, SDL_TRUE);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture image");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    sdl_result = _painter_transition_image_layout(painter, &painter->skybox_shader->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, painter->skybox_shader->mip_levels, 6);
+    if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_copy_cubemap_buffer_to_image(painter, &skybox_tex_buffer, &painter->skybox_shader->texture_image, tex_width, tex_height);
+    if (!sdl_result) return SDL_FALSE;
+    vkDestroyBuffer(painter->device, skybox_tex_buffer, NULL);
+    vkFreeMemory(painter->device, tex_buffer_memory, NULL);
+    sdl_result = _painter_generate_mipmaps(painter, &painter->skybox_shader->texture_image, VK_FORMAT_R8G8B8A8_SRGB, tex_width, tex_height, painter->skybox_shader->mip_levels, SDL_TRUE);
+    if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_create_image_view(painter, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_CUBE, painter->skybox_shader->mip_levels, &painter->skybox_shader->texture_image, &painter->skybox_shader->texture_image_view);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture image view");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+
+    SDL_Log("creating skybox sampler\n");
+    sampler_create_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    sampler_create_info.pNext = NULL;
+    sampler_create_info.flags = 0;
+    sampler_create_info.magFilter = VK_FILTER_LINEAR;
+    sampler_create_info.minFilter = VK_FILTER_LINEAR;
+    sampler_create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    sampler_create_info.addressModeU = VK_FILTER_LINEAR;
+    sampler_create_info.addressModeV = VK_FILTER_LINEAR;
+    sampler_create_info.addressModeW = VK_FILTER_LINEAR;
+    sampler_create_info.mipLodBias = 0.0f;
+    sampler_create_info.anisotropyEnable = VK_TRUE;
+    sampler_create_info.maxAnisotropy = 16.0f;
+    sampler_create_info.compareEnable = VK_FALSE;
+    sampler_create_info.compareOp = VK_COMPARE_OP_ALWAYS;
+    sampler_create_info.minLod = 0.0f;
+    sampler_create_info.maxLod = (float) painter->skybox_shader->mip_levels;
+    sampler_create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    sampler_create_info.unnormalizedCoordinates = VK_FALSE;
+    result = vkCreateSampler(painter->device, &sampler_create_info, NULL, &painter->skybox_shader->texture_sampler);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture image sampler");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+
+    SDL_Log("creating grass buffers\n");
     painter->grass_shader->vertex_staging_buffer_size = painter->grass_shader->num_vertices * sizeof(TutorialVertex);
     VkMemoryPropertyFlags vertex_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
@@ -1015,6 +1160,46 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     painter->grass_shader->index_buffer_size = painter->grass_shader->num_indices * sizeof(Uint32);
     VkMemoryPropertyFlags index_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     sdl_result = _painter_create_buffer(painter, painter->grass_shader->index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, index_property_flags, &painter->grass_shader->index_buffer, &painter->grass_shader->index_buffer_memory);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create index buffer");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+
+    SDL_Log("creating skybox buffers\n");
+    painter->skybox_shader->vertex_staging_buffer_size = painter->skybox_shader->num_vertices * sizeof(TutorialVertex);
+    vertex_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
+    // the offsets and things.
+    sdl_result = _painter_create_buffer(painter, painter->skybox_shader->vertex_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, vertex_staging_property_flags, &painter->skybox_shader->vertex_staging_buffer, &painter->skybox_shader->vertex_staging_buffer_memory);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create staging buffer");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    painter->skybox_shader->vertex_buffer_size = painter->skybox_shader->num_vertices * sizeof(TutorialVertex);
+    vertex_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    sdl_result = _painter_create_buffer(painter, painter->skybox_shader->vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertex_property_flags, &painter->skybox_shader->vertex_buffer, &painter->skybox_shader->vertex_buffer_memory);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create vertex buffer");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+
+    painter->skybox_shader->index_staging_buffer_size = painter->skybox_shader->num_indices * sizeof(Uint32);
+    index_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
+    // the offsets and things.
+    SDL_Log("num vertices = %i num indices = %i\n", painter->skybox_shader->num_vertices, painter->skybox_shader->num_indices);
+    sdl_result = _painter_create_buffer(painter, painter->skybox_shader->index_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, index_staging_property_flags, &painter->skybox_shader->index_staging_buffer, &painter->skybox_shader->index_staging_buffer_memory);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create staging buffer");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    painter->skybox_shader->index_buffer_size = painter->skybox_shader->num_indices * sizeof(Uint32);
+    index_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    sdl_result = _painter_create_buffer(painter, painter->skybox_shader->index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, index_property_flags, &painter->skybox_shader->index_buffer, &painter->skybox_shader->index_buffer_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create index buffer");
         painter_cleanup(painter);
@@ -1100,6 +1285,73 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         vkUpdateDescriptorSets(painter->device, 2, descriptor_write, 0, NULL);
     }
 
+    SDL_free(descriptor_pool_size);
+    descriptor_pool_size = (VkDescriptorPoolSize*) SDL_malloc(2*sizeof(VkDescriptorPoolSize));
+    descriptor_pool_size[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptor_pool_size[0].descriptorCount = painter->swapchain_image_count;
+    descriptor_pool_size[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptor_pool_size[1].descriptorCount = painter->swapchain_image_count;
+    descriptor_pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    descriptor_pool_info.pNext = NULL;
+    descriptor_pool_info.flags = 0;
+    descriptor_pool_info.maxSets = painter->swapchain_image_count;
+    descriptor_pool_info.poolSizeCount = 2;
+    descriptor_pool_info.pPoolSizes = descriptor_pool_size;
+    result = vkCreateDescriptorPool(painter->device, &descriptor_pool_info, NULL, &painter->skybox_shader->descriptor_pool);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create descriptor pool");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_free(layouts);
+    layouts = (VkDescriptorSetLayout*) SDL_malloc(painter->swapchain_image_count * sizeof(VkDescriptorSetLayout));
+    for (Uint32 i=0; i<painter->swapchain_image_count; i++)
+        layouts[i] = painter->skybox_shader->descriptor_set_layout;
+    painter->skybox_shader->descriptor_sets = (VkDescriptorSet*) SDL_malloc(painter->swapchain_image_count * sizeof(VkDescriptorSet));
+    descriptor_set_alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    descriptor_set_alloc_info.pNext = NULL;
+    descriptor_set_alloc_info.descriptorPool = painter->skybox_shader->descriptor_pool;
+    descriptor_set_alloc_info.descriptorSetCount = painter->swapchain_image_count;
+    descriptor_set_alloc_info.pSetLayouts = layouts;
+    result = vkAllocateDescriptorSets(painter->device, &descriptor_set_alloc_info, painter->skybox_shader->descriptor_sets);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not allocate descriptor sets");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    for (Uint32 i=0; i<painter->swapchain_image_count; i++) {
+        VkDescriptorBufferInfo buffer_info;
+        buffer_info.buffer = painter->uniform_buffers[i];
+        buffer_info.offset = 0;
+        buffer_info.range = painter->uniform_buffer_size;
+        VkDescriptorImageInfo image_info;
+        image_info.sampler = painter->skybox_shader->texture_sampler;
+        image_info.imageView = painter->skybox_shader->texture_image_view;
+        image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkWriteDescriptorSet* descriptor_write = (VkWriteDescriptorSet*) SDL_malloc(2*sizeof(VkWriteDescriptorSet));
+        descriptor_write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptor_write[0].pNext = NULL;
+        descriptor_write[0].dstSet = painter->skybox_shader->descriptor_sets[i];
+        descriptor_write[0].dstBinding = 0;
+        descriptor_write[0].dstArrayElement = 0;
+        descriptor_write[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptor_write[0].descriptorCount = 1;
+        descriptor_write[0].pBufferInfo = &buffer_info;
+        descriptor_write[0].pImageInfo = NULL;
+        descriptor_write[0].pTexelBufferView = NULL;
+        descriptor_write[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptor_write[1].pNext = NULL;
+        descriptor_write[1].dstSet = painter->skybox_shader->descriptor_sets[i];
+        descriptor_write[1].dstBinding = 1;
+        descriptor_write[1].dstArrayElement = 0;
+        descriptor_write[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptor_write[1].descriptorCount = 1;
+        descriptor_write[1].pBufferInfo = NULL;
+        descriptor_write[1].pImageInfo = &image_info;
+        descriptor_write[1].pTexelBufferView = NULL;
+        vkUpdateDescriptorSets(painter->device, 2, descriptor_write, 0, NULL);
+    }
+
     painter->command_buffers = (VkCommandBuffer*) SDL_malloc(painter->swapchain_image_count * sizeof(VkCommandBuffer));
     VkCommandBufferAllocateInfo command_buffer_allocate_info;
     command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -1159,12 +1411,28 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         offsets[0] = 0;
         vkCmdCopyBuffer(painter->command_buffers[i], painter->grass_shader->vertex_staging_buffer, painter->grass_shader->vertex_buffer, 1, &vertex_buffer_copy_info);
         vkCmdCopyBuffer(painter->command_buffers[i], painter->grass_shader->index_staging_buffer, painter->grass_shader->index_buffer, 1, &index_buffer_copy_info);
+        vertex_buffer_copy_info.srcOffset = 0;
+        vertex_buffer_copy_info.dstOffset = 0;
+        vertex_buffer_copy_info.size = painter->skybox_shader->vertex_staging_buffer_size;
+        index_buffer_copy_info.srcOffset = 0;
+        index_buffer_copy_info.dstOffset = 0;
+        index_buffer_copy_info.size = painter->skybox_shader->index_staging_buffer_size;
+        vkCmdCopyBuffer(painter->command_buffers[i], painter->skybox_shader->vertex_staging_buffer, painter->skybox_shader->vertex_buffer, 1, &vertex_buffer_copy_info);
+        vkCmdCopyBuffer(painter->command_buffers[i], painter->skybox_shader->index_staging_buffer, painter->skybox_shader->index_buffer, 1, &index_buffer_copy_info);
+
         vkCmdBeginRenderPass(painter->command_buffers[i], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->grass_shader->pipeline);
         vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
         vkCmdBindIndexBuffer(painter->command_buffers[i], painter->grass_shader->index_buffer, 0, VK_INDEX_TYPE_UINT32);
         vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->grass_shader->pipeline_layout, 0, 1, &painter->grass_shader->descriptor_sets[i], 0, NULL);
         vkCmdDrawIndexed(painter->command_buffers[i], painter->grass_shader->num_indices, 1, 0, 0, 0);
+
+        vertex_buffers[0] = painter->skybox_shader->vertex_buffer;
+        vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->skybox_shader->pipeline);
+        vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
+        vkCmdBindIndexBuffer(painter->command_buffers[i], painter->skybox_shader->index_buffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->skybox_shader->pipeline_layout, 0, 1, &painter->skybox_shader->descriptor_sets[i], 0, NULL);
+        vkCmdDrawIndexed(painter->command_buffers[i], painter->skybox_shader->num_indices, 1, 0, 0, 0);
         vkCmdEndRenderPass(painter->command_buffers[i]);
         result = vkEndCommandBuffer(painter->command_buffers[i]);
         if (result != VK_SUCCESS) {
@@ -1212,6 +1480,24 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     SDL_memcpy(index_staging_data, painter->grass_shader->indices, (size_t) painter->grass_shader->index_staging_buffer_size);
     vkUnmapMemory(painter->device, painter->grass_shader->index_staging_buffer_memory);
 
+    result = vkMapMemory(painter->device, painter->skybox_shader->vertex_staging_buffer_memory, 0, painter->skybox_shader->vertex_staging_buffer_size, 0, &vertex_staging_data);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Rendering.", "Could not map staging buffer memory");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_memcpy(vertex_staging_data, painter->skybox_shader->vertices, (size_t) painter->skybox_shader->vertex_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->skybox_shader->vertex_staging_buffer_memory);
+
+    result = vkMapMemory(painter->device, painter->skybox_shader->index_staging_buffer_memory, 0, painter->skybox_shader->index_staging_buffer_size, 0, &index_staging_data);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Rendering.", "Could not map staging buffer memory");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_memcpy(index_staging_data, painter->skybox_shader->indices, (size_t) painter->skybox_shader->index_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->skybox_shader->index_staging_buffer_memory);
+
     vkWaitForFences(painter->device, 1, &painter->in_flight_fences[painter->frame_index], VK_TRUE, UINT64_MAX);
     result = vkAcquireNextImageKHR(painter->device, painter->swapchain, UINT64_MAX, painter->image_available_semaphores[painter->frame_index], VK_NULL_HANDLE, &image_index);
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || painter->buffer_resized) {
@@ -1229,7 +1515,7 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
     // painter->camera_fov += 0.001f;
     // painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 10.0f);
-    // painter->camera_position = rotate_about_origin_axis(painter->camera_position, 0.0003, build_vec3(0.0f, 0.0f, 1.0f));
+    painter->camera_position = rotate_about_origin_axis(painter->camera_position, 0.0001, build_vec3(0.0f, 0.0f, 1.0f));
     painter->uniform_buffer_object.view = look_at_z(painter->camera_position, target);
     painter->uniform_buffer_object.time = (float) SDL_GetTicks()/1000.0f;
     void* uniform_data;
@@ -1291,38 +1577,20 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
 void _painter_cleanup_swapchain(EsPainter* painter) {
     vkQueueWaitIdle(painter->presentation_queue);
     vkDeviceWaitIdle(painter->device);
+    _painter_shader_cleanup(painter, painter->grass_shader);
+    _painter_shader_cleanup(painter, painter->skybox_shader);
     if (painter->swapchain_framebuffers) {
         for (Uint32 i=0; i<painter->swapchain_image_count; i++)
             vkDestroyFramebuffer(painter->device, painter->swapchain_framebuffers[i], NULL);
     }
     if (painter->command_buffers)
         vkFreeCommandBuffers(painter->device, painter->command_pool, painter->swapchain_image_count, painter->command_buffers);
-    if (painter->grass_shader->texture_sampler)
-        vkDestroySampler(painter->device, painter->grass_shader->texture_sampler, NULL);
-    if (painter->grass_shader->texture_image_view)
-        vkDestroyImageView(painter->device, painter->grass_shader->texture_image_view, NULL);
-    if (painter->grass_shader->texture_image)
-        vkDestroyImage(painter->device, painter->grass_shader->texture_image, NULL);
-    if (painter->grass_shader->texture_image_memory)
-        vkFreeMemory(painter->device, painter->grass_shader->texture_image_memory, NULL);
     if (painter->depth_image_view)
         vkDestroyImageView(painter->device, painter->depth_image_view, NULL);
     if (painter->depth_image)
         vkDestroyImage(painter->device, painter->depth_image, NULL);
     if (painter->depth_image_memory)
         vkFreeMemory(painter->device, painter->depth_image_memory, NULL);
-    if (painter->grass_shader->color_image_view)
-        vkDestroyImageView(painter->device, painter->grass_shader->color_image_view, NULL);
-    if (painter->grass_shader->color_image)
-        vkDestroyImage(painter->device, painter->grass_shader->color_image, NULL);
-    if (painter->grass_shader->color_image_memory)
-        vkFreeMemory(painter->device, painter->grass_shader->color_image_memory, NULL);
-    if (painter->grass_shader->pipeline)
-        vkDestroyPipeline(painter->device, painter->grass_shader->pipeline, NULL);
-    if (painter->grass_shader->descriptor_set_layout)
-        vkDestroyDescriptorSetLayout(painter->device, painter->grass_shader->descriptor_set_layout, NULL);
-    if (painter->grass_shader->pipeline_layout)
-        vkDestroyPipelineLayout(painter->device, painter->grass_shader->pipeline_layout, NULL);
     if (painter->render_pass)
         vkDestroyRenderPass(painter->device, painter->render_pass, NULL);
     if (painter->swapchain_image_count > 0) {
@@ -1334,6 +1602,51 @@ void _painter_cleanup_swapchain(EsPainter* painter) {
     return;
 }
 
+void _painter_shader_cleanup(EsPainter* painter, ShaderData* shader) {
+    if (shader->texture_sampler)
+        vkDestroySampler(painter->device, shader->texture_sampler, NULL);
+    if (shader->texture_image_view)
+        vkDestroyImageView(painter->device, shader->texture_image_view, NULL);
+    if (shader->texture_image)
+        vkDestroyImage(painter->device, shader->texture_image, NULL);
+    if (shader->texture_image_memory)
+        vkFreeMemory(painter->device, shader->texture_image_memory, NULL);
+    if (shader->descriptor_pool)
+        vkDestroyDescriptorPool(painter->device, shader->descriptor_pool, NULL);
+    if (shader->index_buffer)
+        vkDestroyBuffer(painter->device, shader->index_buffer, NULL);
+    if (shader->index_buffer_memory)
+        vkFreeMemory(painter->device, shader->index_buffer_memory, NULL);
+    if (shader->index_staging_buffer)
+        vkDestroyBuffer(painter->device, shader->index_staging_buffer, NULL);
+    if (shader->index_staging_buffer_memory)
+        vkFreeMemory(painter->device, shader->index_staging_buffer_memory, NULL);
+    if (shader->vertex_buffer)
+        vkDestroyBuffer(painter->device, shader->vertex_buffer, NULL);
+    if (shader->vertex_buffer_memory)
+        vkFreeMemory(painter->device, shader->vertex_buffer_memory, NULL);
+    if (shader->vertex_staging_buffer)
+        vkDestroyBuffer(painter->device, shader->vertex_staging_buffer, NULL);
+    if (shader->vertex_staging_buffer_memory)
+        vkFreeMemory(painter->device, shader->vertex_staging_buffer_memory, NULL);
+    if (shader->vertex_shader_module)
+        vkDestroyShaderModule(painter->device, shader->vertex_shader_module, NULL);
+    if (shader->fragment_shader_module)
+        vkDestroyShaderModule(painter->device, shader->fragment_shader_module, NULL);
+    if (shader->color_image_view)
+        vkDestroyImageView(painter->device, shader->color_image_view, NULL);
+    if (shader->color_image)
+        vkDestroyImage(painter->device, shader->color_image, NULL);
+    if (shader->color_image_memory)
+        vkFreeMemory(painter->device, shader->color_image_memory, NULL);
+    if (shader->pipeline)
+        vkDestroyPipeline(painter->device, shader->pipeline, NULL);
+    if (shader->descriptor_set_layout)
+        vkDestroyDescriptorSetLayout(painter->device, shader->descriptor_set_layout, NULL);
+    if (shader->pipeline_layout)
+        vkDestroyPipelineLayout(painter->device, shader->pipeline_layout, NULL);
+}
+
 void painter_cleanup(EsPainter* painter) {
     _painter_cleanup_swapchain(painter);
     if (painter->uniform_buffers)
@@ -1342,24 +1655,6 @@ void painter_cleanup(EsPainter* painter) {
     if (painter->uniform_buffers_memory)
         for (Uint32 i=0; i<painter->swapchain_image_count; i++)
             vkFreeMemory(painter->device, painter->uniform_buffers_memory[i], NULL);
-    if (painter->grass_shader->descriptor_pool)
-        vkDestroyDescriptorPool(painter->device, painter->grass_shader->descriptor_pool, NULL);
-    if (painter->grass_shader->index_buffer)
-        vkDestroyBuffer(painter->device, painter->grass_shader->index_buffer, NULL);
-    if (painter->grass_shader->index_buffer_memory)
-        vkFreeMemory(painter->device, painter->grass_shader->index_buffer_memory, NULL);
-    if (painter->grass_shader->index_staging_buffer)
-        vkDestroyBuffer(painter->device, painter->grass_shader->index_staging_buffer, NULL);
-    if (painter->grass_shader->index_staging_buffer_memory)
-        vkFreeMemory(painter->device, painter->grass_shader->index_staging_buffer_memory, NULL);
-    if (painter->grass_shader->vertex_buffer)
-        vkDestroyBuffer(painter->device, painter->grass_shader->vertex_buffer, NULL);
-    if (painter->grass_shader->vertex_buffer_memory)
-        vkFreeMemory(painter->device, painter->grass_shader->vertex_buffer_memory, NULL);
-    if (painter->grass_shader->vertex_staging_buffer)
-        vkDestroyBuffer(painter->device, painter->grass_shader->vertex_staging_buffer, NULL);
-    if (painter->grass_shader->vertex_staging_buffer_memory)
-        vkFreeMemory(painter->device, painter->grass_shader->vertex_staging_buffer_memory, NULL);
     if (painter->in_flight_fences)
         for (Uint32 i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
             vkDestroyFence(painter->device, painter->in_flight_fences[i], NULL);
@@ -1371,10 +1666,6 @@ void painter_cleanup(EsPainter* painter) {
             vkDestroySemaphore(painter->device, painter->render_finished_semaphores[i], NULL);
     if (painter->command_pool)
         vkDestroyCommandPool(painter->device, painter->command_pool, NULL);
-    if (painter->grass_shader->vertex_shader_module)
-        vkDestroyShaderModule(painter->device, painter->grass_shader->vertex_shader_module, NULL);
-    if (painter->grass_shader->fragment_shader_module)
-        vkDestroyShaderModule(painter->device, painter->grass_shader->fragment_shader_module, NULL);
     if (painter->device) {
         vkDeviceWaitIdle(painter->device);
         vkDestroyDevice(painter->device, NULL);
@@ -1495,7 +1786,7 @@ Uint32 _painter_find_memory_type(EsPainter* painter, VkMemoryPropertyFlags prope
     return memory_type_index;
 }
 
-SDL_bool _painter_transition_image_layout(EsPainter* painter, VkImage* image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout, Uint32 mip_levels) {
+SDL_bool _painter_transition_image_layout(EsPainter* painter, VkImage* image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout, Uint32 mip_levels, Uint32 layer_count) {
     VkResult result;
     SDL_bool sdl_result;
     VkCommandBuffer command_buffer = _painter_begin_single_use_command_buffer(painter);
@@ -1513,7 +1804,7 @@ SDL_bool _painter_transition_image_layout(EsPainter* painter, VkImage* image, Vk
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = mip_levels;
     barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
+    barrier.subresourceRange.layerCount = layer_count;
     if (new_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
         if (format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT) {
@@ -1573,19 +1864,49 @@ SDL_bool _painter_copy_buffer_to_image(EsPainter* painter, VkBuffer* buffer, VkI
     return SDL_TRUE;
 }
 
-SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, Uint32 mip_levels, VkSampleCountFlagBits num_samples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory) {
+SDL_bool _painter_copy_cubemap_buffer_to_image(EsPainter* painter, VkBuffer* buffer, VkImage* image, Uint32 width, Uint32 height) {
+    VkResult result;
+    SDL_bool sdl_result;
+    VkCommandBuffer command_buffer = _painter_begin_single_use_command_buffer(painter);
+    if (command_buffer == NULL) return SDL_FALSE;
+    VkBufferImageCopy image_regions[6];
+    for (Uint32 i=0; i<6; i++) {
+        image_regions[i].bufferOffset = sizeof(unsigned char) * width * height * 4 * i;
+        image_regions[i].bufferRowLength = 0;
+        image_regions[i].bufferImageHeight = 0;
+        image_regions[i].imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        image_regions[i].imageSubresource.mipLevel = 0;
+        image_regions[i].imageSubresource.baseArrayLayer = i;
+        image_regions[i].imageSubresource.layerCount = 1;
+        image_regions[i].imageOffset.x = 0;
+        image_regions[i].imageOffset.y = 0;
+        image_regions[i].imageOffset.z = 0;
+        image_regions[i].imageExtent.width = width;
+        image_regions[i].imageExtent.height = height;
+        image_regions[i].imageExtent.depth = 1;
+    }
+    vkCmdCopyBufferToImage(command_buffer, *buffer, *image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 6, image_regions);
+    sdl_result = _painter_end_single_use_command_buffer(painter, &command_buffer);
+    if (!sdl_result) return SDL_FALSE;
+    return SDL_TRUE;
+}
+
+SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, Uint32 mip_levels, VkSampleCountFlagBits num_samples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage* image, VkDeviceMemory* image_memory, Uint32 array_layers, SDL_bool is_cube) {
     VkResult result;
     VkImageCreateInfo image_create_info;
     image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     image_create_info.pNext = NULL;
-    image_create_info.flags = 0;
+    if (is_cube) 
+        image_create_info.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+    else
+        image_create_info.flags = 0;
     image_create_info.imageType = VK_IMAGE_TYPE_2D;
     image_create_info.format = format;
     image_create_info.extent.depth = 1;
     image_create_info.extent.width = width;
     image_create_info.extent.height = height;
     image_create_info.mipLevels = mip_levels;
-    image_create_info.arrayLayers = 1;
+    image_create_info.arrayLayers = array_layers;
     image_create_info.samples = num_samples;
     image_create_info.tiling = tiling;
     image_create_info.usage = usage;
@@ -1617,14 +1938,14 @@ SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 height, 
     return SDL_TRUE;
 }
 
-SDL_bool _painter_create_image_view(EsPainter* painter, VkFormat format, VkImageAspectFlags aspect_flags, Uint32 mip_levels, VkImage* image, VkImageView* image_view) {
+SDL_bool _painter_create_image_view(EsPainter* painter, VkFormat format, VkImageAspectFlags aspect_flags, VkImageViewType image_view_type, Uint32 mip_levels, VkImage* image, VkImageView* image_view) {
     VkResult result;
     VkImageViewCreateInfo image_view_create_info;
     image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     image_view_create_info.pNext = NULL;
     image_view_create_info.flags = 0;
     image_view_create_info.image = *image;
-    image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    image_view_create_info.viewType = image_view_type;
     image_view_create_info.format = format;
     image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
     image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -1634,7 +1955,10 @@ SDL_bool _painter_create_image_view(EsPainter* painter, VkFormat format, VkImage
     image_view_create_info.subresourceRange.baseMipLevel = 0;
     image_view_create_info.subresourceRange.levelCount = mip_levels;
     image_view_create_info.subresourceRange.baseArrayLayer = 0;
-    image_view_create_info.subresourceRange.layerCount = 1;
+    if (image_view_type == VK_IMAGE_VIEW_TYPE_CUBE)
+        image_view_create_info.subresourceRange.layerCount = 6;
+    else
+        image_view_create_info.subresourceRange.layerCount = 1;
     result = vkCreateImageView(painter->device, &image_view_create_info, NULL, image_view);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create image view");
@@ -1704,7 +2028,7 @@ SDL_bool _painter_end_single_use_command_buffer(EsPainter* painter, VkCommandBuf
     return SDL_TRUE;
 }
 
-SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat image_format, Uint32 width, Uint32 height, Uint32 mip_levels) {
+SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat image_format, Uint32 width, Uint32 height, Uint32 mip_levels, SDL_bool is_cubemap) {
     VkResult result;
     SDL_bool sdl_result;
     VkFormatProperties format_properties;
@@ -1719,15 +2043,16 @@ SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat 
     VkImageMemoryBarrier barrier;
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.pNext = NULL;
-    // barrier.oldLayout = old_layout;
-    // barrier.newLayout = new_layout;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.image = *image;
     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.levelCount = 1;
-    barrier.subresourceRange.layerCount = 1;
+    if (is_cubemap)
+        barrier.subresourceRange.layerCount = 6;
+    else
+        barrier.subresourceRange.layerCount = 1;
     int mip_width = width;
     int mip_height = height;
     for (Uint32 i=1; i<mip_levels; i++) {
