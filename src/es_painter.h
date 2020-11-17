@@ -38,9 +38,13 @@ typedef struct {
     VkImage color_image;
     VkDeviceMemory color_image_memory;
     VkImageView color_image_view;
-    VkSampleCountFlagBits msaa_samples;
+    VkDescriptorSetLayout descriptor_set_layout;
     VkShaderModule vertex_shader_module;
     VkShaderModule fragment_shader_module;
+    VkPipelineLayout pipeline_layout;
+    VkPipeline pipeline;
+    VkDescriptorPool descriptor_pool;
+    VkDescriptorSet* descriptor_sets;
 } ShaderData;
 
 typedef struct {
@@ -53,10 +57,8 @@ typedef struct {
     Uint32 swapchain_image_count;
     Uint32 frame_index;
     VkImageView* swapchain_image_views;
-    VkDescriptorSetLayout descriptor_set_layout;
-    VkPipelineLayout pipeline_layout;
+    VkExtent2D swapchain_extent;
     VkRenderPass render_pass;
-    VkPipeline graphics_pipeline;
     VkFramebuffer* swapchain_framebuffers;
     VkCommandPool command_pool;
     VkSemaphore* image_available_semaphores;
@@ -66,8 +68,7 @@ typedef struct {
     VkQueue presentation_queue;
     VkCommandBuffer* command_buffers;
     VkQueue graphics_queue;
-    VkDescriptorPool descriptor_pool;
-    VkDescriptorSet* descriptor_sets;
+    VkSampleCountFlagBits msaa_samples;
     SDL_bool buffer_resized;
     Uint32 uniform_buffer_size;
     UniformBufferObject uniform_buffer_object;
