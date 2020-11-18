@@ -10,7 +10,8 @@ layout(location = 1) in vec3 fragTexCoord;
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    vec4 col = texture(texSampler, normalize(fragTexCoord));
+    vec3 coord = vec3(fragTexCoord.x, fragTexCoord.z, fragTexCoord.y);
+    vec4 col = texture(texSampler, normalize(coord));
     if (col.a < 0.3)
         discard;
     outColor = col;

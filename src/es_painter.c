@@ -19,8 +19,8 @@
 #define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skybox/back.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH2 "data/img/skybox/top.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skybox/bottom.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skybox/right.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skybox/left.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skybox/left.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skybox/right.jpg"
 
 
 void _painter_cleanup_swapchain(EsPainter* painter);
@@ -1048,17 +1048,24 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     SDL_Log("loading skybox texture\n");
     unsigned char* skybox_pixels[6];
     skybox_pixels[0] = stbi_load(SKYBOX_MODEL_TEXTURE_PATH0, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+    SDL_Log("width and height: %i, %i\n", tex_width, tex_height);
     skybox_pixels[1] = stbi_load(SKYBOX_MODEL_TEXTURE_PATH1, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+    SDL_Log("width and height: %i, %i\n", tex_width, tex_height);
     skybox_pixels[2] = stbi_load(SKYBOX_MODEL_TEXTURE_PATH2, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+    SDL_Log("width and height: %i, %i\n", tex_width, tex_height);
     skybox_pixels[3] = stbi_load(SKYBOX_MODEL_TEXTURE_PATH3, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+    SDL_Log("width and height: %i, %i\n", tex_width, tex_height);
     skybox_pixels[4] = stbi_load(SKYBOX_MODEL_TEXTURE_PATH4, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+    SDL_Log("width and height: %i, %i\n", tex_width, tex_height);
     skybox_pixels[5] = stbi_load(SKYBOX_MODEL_TEXTURE_PATH5, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+    SDL_Log("width and height: %i, %i\n", tex_width, tex_height);
     if (!skybox_pixels[0] || !skybox_pixels[1] || !skybox_pixels[2] || !skybox_pixels[3] || !skybox_pixels[4] || !skybox_pixels[5]) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not load texture");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
     painter->skybox_shader->mip_levels = (Uint32) (SDL_floor(warehouse_log_2(SDL_max((float) tex_width, (float) tex_height))) + 1.0f);
+    // painter->skybox_shader->mip_levels = 1;
     SDL_Log("skybox shader mip levels: %i\n", painter->skybox_shader->mip_levels);
     tex_size = tex_width * tex_height * 4;
     sdl_result = _painter_create_buffer(painter, tex_size*6, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &skybox_tex_buffer, &tex_buffer_memory);
@@ -1871,7 +1878,7 @@ SDL_bool _painter_copy_cubemap_buffer_to_image(EsPainter* painter, VkBuffer* buf
     if (command_buffer == NULL) return SDL_FALSE;
     VkBufferImageCopy image_regions[6];
     for (Uint32 i=0; i<6; i++) {
-        image_regions[i].bufferOffset = sizeof(unsigned char) * width * height * 4 * i;
+        image_regions[i].bufferOffset = width * height * 4 * i;
         image_regions[i].bufferRowLength = 0;
         image_regions[i].bufferImageHeight = 0;
         image_regions[i].imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -2074,7 +2081,10 @@ SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat 
         blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         blit.srcSubresource.mipLevel = i - 1;
         blit.srcSubresource.baseArrayLayer = 0;
-        blit.srcSubresource.layerCount = 1;
+        if (is_cubemap)
+            blit.srcSubresource.layerCount = 6;
+        else
+            blit.srcSubresource.layerCount = 1;
         blit.dstOffsets[0].x = 0;
         blit.dstOffsets[0].y = 0;
         blit.dstOffsets[0].z = 0;
@@ -2090,7 +2100,10 @@ SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat 
         blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         blit.dstSubresource.mipLevel = i;
         blit.dstSubresource.baseArrayLayer = 0;
-        blit.dstSubresource.layerCount = 1;
+        if (is_cubemap)
+            blit.dstSubresource.layerCount = 6;
+        else
+            blit.dstSubresource.layerCount = 1;
         vkCmdBlitImage(command_buffer,
             *image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
             *image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
