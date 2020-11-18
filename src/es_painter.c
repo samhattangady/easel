@@ -15,12 +15,12 @@
 #define GRASS_MODEL_PATH "data/obj/grass3.obj"
 #define GRASS_MODEL_TEXTURE_PATH "data/img/grass3.png"
 #define SKYBOX_MODEL_PATH "data/obj/skybox.obj"
-#define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skybox/front.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skybox/back.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skybox/front.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skybox/back.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH2 "data/img/skybox/top.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skybox/bottom.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skybox/left.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skybox/right.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skybox/left.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skybox/right.jpg"
 
 
 void _painter_cleanup_swapchain(EsPainter* painter);
@@ -1522,7 +1522,7 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
     // painter->camera_fov += 0.001f;
     // painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 10.0f);
-    painter->camera_position = rotate_about_origin_axis(painter->camera_position, 0.0001, build_vec3(0.0f, 0.0f, 1.0f));
+    painter->camera_position = rotate_about_origin_axis(painter->camera_position, 0.0003, build_vec3(0.0f, 0.0f, 1.0f));
     painter->uniform_buffer_object.view = look_at_z(painter->camera_position, target);
     painter->uniform_buffer_object.time = (float) SDL_GetTicks()/1000.0f;
     void* uniform_data;
