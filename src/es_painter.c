@@ -1519,12 +1519,16 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
         return SDL_FALSE;
     }
 
+    painter->uniform_buffer_object.time = (float) SDL_GetTicks()/1000.0f;
     vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
     // painter->camera_fov += 0.001f;
     // painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 10.0f);
-    painter->camera_position = rotate_about_origin_axis(painter->camera_position, 0.0003, build_vec3(0.0f, 0.0f, 1.0f));
+    vec3 base_camera = build_vec3(0.0f, 5.0f, 1.0f);
+    float angle = 3.1415 * sin(painter->uniform_buffer_object.time / 4.0f);
+    painter->camera_position = rotate_about_origin_zaxis(base_camera, angle);
     painter->uniform_buffer_object.view = look_at_z(painter->camera_position, target);
-    painter->uniform_buffer_object.time = (float) SDL_GetTicks()/1000.0f;
+    // TODO (20 Nov 2020 sam): Add this as a `billboard_model` field in the struct.
+    painter->uniform_buffer_object.model = rotation_matrix_zaxis(-angle);
     void* uniform_data;
     result = vkMapMemory(painter->device, painter->uniform_buffers_memory[image_index], 0, painter->uniform_buffer_size, 0, &uniform_data);
     if (result != VK_SUCCESS) {

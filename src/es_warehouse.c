@@ -168,7 +168,7 @@ vec3 build_vec3(float x, float y, float z) {
     return result;
 }
 
-vec3 rotate_about_origin_axis(vec3 point, float angle, vec3 axis) {
+mat4 rotation_matrix_axis(float angle, vec3 axis) {
     float cosa = (float) SDL_cos(angle);
     float sina = (float) SDL_sin(angle);
     vec3 n = vec3_normalize(axis);
@@ -187,6 +187,23 @@ vec3 rotate_about_origin_axis(vec3 point, float angle, vec3 axis) {
         0.0f,
         0.0f, 0.0f, 0.0f, 1.0f
     );
+    return rotation;
+}
+
+mat4 rotation_matrix_xaxis(float angle) {
+    return rotation_matrix_axis(angle, build_vec3(1.0f, 0.0f, 0.0f));
+}
+
+mat4 rotation_matrix_yaxis(float angle) {
+    return rotation_matrix_axis(angle, build_vec3(0.0f, 1.0f, 0.0f));
+}
+
+mat4 rotation_matrix_zaxis(float angle) {
+    return rotation_matrix_axis(angle, build_vec3(0.0f, 0.0f, 1.0f));
+}
+
+vec3 rotate_about_origin_axis(vec3 point, float angle, vec3 axis) {
+    mat4 rotation = rotation_matrix_axis(angle, axis);
     vec4 point4 = build_vec4(point.x, point.y, point.z, 0.0f);
     vec4 rotated = mat4_vec4_multiply(rotation, point4);
     return build_vec3(rotated.x, rotated.y, rotated.z);

@@ -2,6 +2,7 @@
 #pragma shader_stage(vertex)
 #extension GL_ARB_separate_shader_objects : enable
 
+float GRASS_BILLBOARD_SIZE = 0.16f;
 layout(binding = 0) uniform UniformBufferObject {
     mat4 model;
     mat4 view;
@@ -16,10 +17,8 @@ layout(location = 2) in vec2 inTexCoord;
 layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec2 fragTexCoord;
 
-float rand(float n){return fract(sin(n) * 43758.5453123);}
-float rand(vec2 n) { 
-	return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
-}
+float rand(float n) { return fract(sin(n) * 43758.5453123); }
+float rand(vec2 n) { return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453); }
 
 float noise(float p){
 	float fl = floor(p);
@@ -34,10 +33,12 @@ float noise(vec2 n) {
 }
 
 void main() {
-    vec3 pos = inPosition;
-    pos.x += (1.0-inTexCoord.y)/50.0 *sin(ubo.time*cos(noise(vec2(pos.x, pos.y)))*1.7);
+    vec4 pos = vec4(inPosition, 1.0f);
+    vec4 object_space_pos = ubo.model * vec4(inTexCoord*GRASS_BILLBOARD_SIZE, 0.0f, 0.0f);
+    pos += object_space_pos;
+    pos.x += (1.0-inTexCoord.y)/50.0 * sin(ubo.time*cos(noise(vec2(pos.x, pos.y)))*1.7);
     pos.z += (1.0-inTexCoord.y)/80.0 * abs(sin(ubo.time*1.3*pos.y*0.5));
-    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);
+    gl_Position = ubo.proj * ubo.view * pos;
     fragColor = inColor;
     fragTexCoord = inTexCoord;
 }
