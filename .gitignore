@@ -7,6 +7,8 @@
 *.zip
 *.rdbg
 
+SDL2.dll
+
 build/
 gbuild/
 tbuild/
