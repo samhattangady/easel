@@ -34,10 +34,11 @@ float noise(vec2 n) {
 
 void main() {
     vec4 pos = vec4(inPosition, 1.0f);
-    vec4 object_space_pos = ubo.model * vec4(inTexCoord*GRASS_BILLBOARD_SIZE, 0.0f, 0.0f);
+    vec4 object_space_pos = vec4(inTexCoord*GRASS_BILLBOARD_SIZE, 0.0f, 0.0f);
+    object_space_pos.x += (1.0-inTexCoord.y)/50.0 * sin(ubo.time*cos(noise(vec2(pos.x, pos.y)))*1.7);
+    object_space_pos.z += (1.0-inTexCoord.y)/80.0 * abs(sin(ubo.time*1.3*pos.y*0.5));
+    object_space_pos = ubo.model * object_space_pos;
     pos += object_space_pos;
-    pos.x += (1.0-inTexCoord.y)/50.0 * sin(ubo.time*cos(noise(vec2(pos.x, pos.y)))*1.7);
-    pos.z += (1.0-inTexCoord.y)/80.0 * abs(sin(ubo.time*1.3*pos.y*0.5));
     gl_Position = ubo.proj * ubo.view * pos;
     fragColor = inColor;
     fragTexCoord = inTexCoord;
