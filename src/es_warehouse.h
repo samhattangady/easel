@@ -22,6 +22,12 @@ typedef struct {
 } vec3;
 
 typedef struct {
+    Uint32 x;
+    Uint32 y;
+    Uint32 z;
+} vec3ui;
+
+typedef struct {
     float x;
     float y;
     float z;
@@ -40,6 +46,11 @@ typedef struct {
     vec3 color;
     vec2 tex;
 } TutorialVertex;
+
+typedef struct string {
+    char* text;
+    Uint32 memory_allotted;
+} string;
 
 extern void warehouse_error_popup(const char* error_header, const char* error_text);
 extern float warehouse_log_2(float num);
@@ -61,6 +72,7 @@ extern float vec3_dot(vec3 a, vec3 b);
 extern vec3 vec3_normalize(vec3 a);
 extern float vec3_magnitude(vec3 a);
 extern vec3 build_vec3(float x, float y, float z);
+extern vec3ui build_vec3ui(Uint32 x, Uint32 y, Uint32 z);
 extern mat4 rotation_matrix_axis(float angle, vec3 axis);
 extern mat4 rotation_matrix_xaxis(float angle);
 extern mat4 rotation_matrix_yaxis(float angle);
@@ -72,5 +84,16 @@ extern vec3 rotate_about_origin_zaxis(vec3 point, float angle);
 extern vec4 build_vec4(float x, float y, float z, float w);
 extern mat4 perspective_projection(float angle, float aspect_ratio, float near, float far);
 extern float deg_to_rad(float deg);
+
+extern int append_chars(string* base, char* chars);
+extern string empty_string();
+extern string string_from(char* text);
+extern string stringf(char* base, ...);
+extern int clear_string(string* s);
+extern int print_string(string* s);
+extern int append_string(string* base, string* appendage);
+extern int dispose_string(string* base);
+extern Uint32 string_length(string* s);
+extern int append_sprintf(string* s, char* base, ...);
 
 #endif

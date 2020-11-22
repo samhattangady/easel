@@ -1,5 +1,10 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdarg.h>
 #include "es_warehouse.h"
-#define PI 3.141592653589793238
+
+#define BASE_STRING_LENGTH 1024
 
 float warehouse_log_2(float num) {
     return (float) SDL_log(num) / (float) SDL_log(2);
@@ -168,6 +173,14 @@ vec3 build_vec3(float x, float y, float z) {
     return result;
 }
 
+vec3ui build_vec3ui(Uint32 x, Uint32 y, Uint32 z) {
+    vec3ui result;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    return result;
+}
+
 mat4 rotation_matrix_axis(float angle, vec3 axis) {
     float cosa = (float) SDL_cos(angle);
     float sina = (float) SDL_sin(angle);
@@ -202,7 +215,13 @@ mat4 rotation_matrix_zaxis(float angle) {
     return rotation_matrix_axis(angle, build_vec3(0.0f, 0.0f, 1.0f));
 }
 
+SDL_bool vec3_is_zero(vec3 a) {
+    return (a.x == 0.0f && a.y == 0.0f && a.z == 0.0f);
+}
+
 vec3 rotate_about_origin_axis(vec3 point, float angle, vec3 axis) {
+    if (vec3_is_zero(axis) || angle == 0.0f)
+        return point;
     mat4 rotation = rotation_matrix_axis(angle, axis);
     vec4 point4 = build_vec4(point.x, point.y, point.z, 0.0f);
     vec4 rotated = mat4_vec4_multiply(rotation, point4);
@@ -245,5 +264,100 @@ extern mat4 perspective_projection(float angle, float aspect_ratio, float near, 
 }
 
 float deg_to_rad(float deg) {
-    return (float) PI*deg/180.0f;
+    return (float) M_PI*deg/180.0f;
+}
+
+
+int append_chars(string* base, char* chars) {
+    short should_realloc = 0;
+    Uint32 memory_allotted = base->memory_allotted;
+    while(memory_allotted < string_length(base) + strlen(chars)) {
+        memory_allotted *= 2;
+        should_realloc = 1;
+    }
+    if (should_realloc == 1) {
+        printf("reallocing... append_chars\n");
+        base->text = (char*) realloc(base->text, memory_allotted);
+        base->memory_allotted = memory_allotted;
+    }
+    strcat(base->text, chars);
+    return 0;
+}
+
+int va_append_sprintf(string* base, char* fbase, va_list args) {
+    // TODO (24 Feb 2020 sam): PERFORMANCE. See if we can do this in a single
+    // va loop. Currently, we use vsnprintf to get the length of the temp
+    // buffer. Then, we use vsprintf to actually copy the required stuffs to the
+    // string. There might be a way to do it in a single rep. Since we do it twice,
+    // we also require an extra variable (args_copy);
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int size = vsnprintf(NULL, 0, fbase, args) + 1;
+	// FIXME (09 Jun 1010 sam): Should be size size. Was not working in windows
+    char s[1000];
+    s[0] = '\0';
+    vsprintf(&s[0], fbase, args_copy);
+    s[size-1] = '\0';
+    append_chars(base, s);
+    return 0;
+}
+
+Uint32 string_length(string* s) {
+    return strlen(s->text);
+}
+
+int clear_string(string* s) {
+    s->text[0] = '\0';
+    return 0;
+}
+
+int print_string(string* s) {
+    printf(s->text);
+    return 0;
+}
+
+int dispose_string(string* base) {
+    free(base->text);
+    return 0;
+}
+
+string empty_string() {
+    return string_from("");
+}
+
+string string_from(char* text) {
+    unsigned int len = BASE_STRING_LENGTH;
+    while (len < strlen(text))
+        len *= 2;
+    char* s = (char*) malloc(len * sizeof(char));
+    s[0] = '\0';
+    strcat(s, text);
+    // TODO (31 Mar 2020 sam): for some reason, returning without allocating
+    // doesn't work here. We can't just return {s, len}; for som reason...
+    string result;
+    result.text = s;
+    result.memory_allotted = len;
+    return result;
+}
+
+int append_string(string* base, string* appendage) {
+    append_chars(base, appendage->text);
+    return 0;
+}
+
+string stringf(char* base, ...) {
+    va_list args;
+    va_start(args, base);
+    string result = empty_string();
+    va_append_sprintf(&result, base, args);
+    va_end(args);
+    return result;
+}
+
+int append_sprintf(string* base, char* fbase, ...) {
+    va_list args;
+    va_start(args, fbase);
+    va_append_sprintf(base, fbase, args);
+    va_end(args);
+    return 0;
 }
