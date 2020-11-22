@@ -21,10 +21,11 @@ float _geom_error_from_lod(Uint32 lod) {
 
 Uint32 _geom_get_vertices_from_radius(float radius, Uint32 lod) {
     // https://stackoverflow.com/questions/11774038/how-to-render-a-circle-with-as-few-vertices-as-possible
-    float error = _geom_error_from_lod(lod);
-    float th = SDL_acosf(2 * SDL_powf((1 - error / radius), 2) - 1);
-    Uint32 num_vertices = (Uint32) SDL_ceilf(2* (float)M_PI/th);
-    return num_vertices;
+    // float error = _geom_error_from_lod(lod);
+    // float th = SDL_acosf(2 * SDL_powf((1 - error / radius), 2) - 1);
+    // Uint32 num_vertices = (Uint32) SDL_ceilf(2* (float)M_PI/th);
+    // return num_vertices;
+    return 20;
 }
 
 Uint32 _geom_remaining_vertices(EsGeometry* geom) {
@@ -121,7 +122,6 @@ SDL_bool geom_add_cone(EsGeometry* geom, vec3 root, vec3 axis, float base_radius
     axis = vec3_normalize(axis);
     vec3 perp_axis = vec3_cross(y_axis, axis);
     float angle = SDL_acosf(vec3_dot(y_axis, axis));
-    SDL_Log("angle = %f, perp_axis = (%f,%f, %f)\n", angle, perp_axis.x, perp_axis.y, perp_axis.z);
     for (Uint32 i=0; i<total_vertices; i++) {
         vertices[i] = vec3_add(root, rotate_about_origin_axis(vertices[i], angle, perp_axis));
     }
@@ -136,6 +136,65 @@ SDL_bool geom_add_cone(EsGeometry* geom, vec3 root, vec3 axis, float base_radius
         Uint32 last_face = (base_num_vertices*2) - 1;
         faces[last_face] = build_vec3ui(first_vertex+1, first_vertex+base_num_vertices+1, first_vertex+(base_num_vertices-1)+1);
     }
+    SDL_memcpy(&geom->vertices[first_vertex], vertices, sizeof(vec3)*total_vertices);
+    SDL_memcpy(&geom->faces[first_face], faces, sizeof(vec3ui)*total_faces);
+    SDL_free(vertices);
+    SDL_free(faces);
+    return SDL_TRUE;
+}
+
+SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos, vec3 base_axis, float tip_radius, vec3 tip_pos, vec3 tip_axis, Uint32 lod) {
+    Uint32 base_num_vertices = _geom_get_vertices_from_radius(base_radius, lod);
+    Uint32 total_vertices = base_num_vertices * 2;
+    Uint32 total_faces = base_num_vertices * 2;
+    if (_geom_remaining_vertices(geom) < total_vertices) {
+        // We just add extra. Don't need to be exact.
+        SDL_bool resize = geom_add_vertices_memory(geom, total_vertices);
+        if (!resize) {
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Add cone : Could not alloc vertices\n");
+            return SDL_FALSE;
+        }
+    }
+    if (_geom_remaining_faces(geom) < total_faces) {
+        SDL_bool resize = geom_add_faces_memory(geom, total_faces);
+        if (!resize) {
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Add cone : Could not alloc faces\n");
+            return SDL_FALSE;
+        }
+    }
+    Uint32 first_vertex = geom->num_vertices;
+    Uint32 first_face = geom->num_faces;
+    geom->num_vertices += total_vertices;
+    geom->num_faces += total_faces;
+    vec3* vertices = (vec3*) SDL_malloc(total_vertices * sizeof(vec3));
+    vec3ui* faces = (vec3ui*) SDL_malloc(total_faces * sizeof(vec3ui));
+    for (Uint32 i=0; i<base_num_vertices; i++) {
+        float angle = (i-1.0f) / (base_num_vertices*1.0f) * (2.0f* (float)M_PI);
+        float x = SDL_sinf(angle) * base_radius;
+        float y = SDL_cosf(angle) * base_radius;
+        vertices[i] = build_vec3(x, 0.0f, y);
+        x = SDL_sinf(angle) * tip_radius;
+        y = SDL_cosf(angle) * tip_radius;
+        vertices[base_num_vertices+i] = build_vec3(x, 0.0f, y);
+    }
+    vec3 y_axis = build_vec3(0.0f, 1.0f, 0.0f);
+    base_axis = vec3_normalize(base_axis);
+    vec3 base_perp_axis = vec3_cross(y_axis, base_axis);
+    float base_angle = SDL_acosf(vec3_dot(y_axis, base_axis));
+    for (Uint32 i=0; i<base_num_vertices; i++) {
+        vertices[i] = vec3_add(base_pos, rotate_about_origin_axis(vertices[i], base_angle, base_perp_axis));
+    }
+    tip_axis = vec3_normalize(tip_axis);
+    vec3 tip_perp_axis = vec3_cross(y_axis, tip_axis);
+    float tip_angle = SDL_acosf(vec3_dot(y_axis, tip_axis));
+    for (Uint32 i=0; i<base_num_vertices; i++) {
+        vertices[i+base_num_vertices] = vec3_add(tip_pos, rotate_about_origin_axis(vertices[i+base_num_vertices], tip_angle, tip_perp_axis));
+    }
+    for (Uint32 i=0; i<base_num_vertices-1; i++) {
+        faces[2*i + 0] = build_vec3ui(first_vertex+i, first_vertex+i+1, first_vertex+base_num_vertices+i);
+        faces[2*i + 1] = build_vec3ui(first_vertex+i+1, first_vertex+base_num_vertices+i+1, first_vertex+base_num_vertices+i);
+    }
+    // TODO (22 Nov 2020 sam): Close the last face.
     SDL_memcpy(&geom->vertices[first_vertex], vertices, sizeof(vec3)*total_vertices);
     SDL_memcpy(&geom->faces[first_face], faces, sizeof(vec3ui)*total_faces);
     SDL_free(vertices);

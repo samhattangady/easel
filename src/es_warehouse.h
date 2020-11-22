@@ -68,6 +68,8 @@ extern mat4 look_at_z(vec3 eye, vec3 target);
 extern vec3 vec3_sub(vec3 a, vec3 b);
 extern vec3 vec3_add(vec3 a, vec3 b);
 extern vec3 vec3_cross(vec3 a, vec3 b);
+extern vec3 vec3_scale(vec3 a, float b);
+extern SDL_bool vec3_is_zero(vec3 a);
 extern float vec3_dot(vec3 a, vec3 b);
 extern vec3 vec3_normalize(vec3 a);
 extern float vec3_magnitude(vec3 a);
@@ -84,6 +86,7 @@ extern vec3 rotate_about_origin_zaxis(vec3 point, float angle);
 extern vec4 build_vec4(float x, float y, float z, float w);
 extern mat4 perspective_projection(float angle, float aspect_ratio, float near, float far);
 extern float deg_to_rad(float deg);
+extern float lerp(float start, float end, float val);
 
 extern int append_chars(string* base, char* chars);
 extern string empty_string();

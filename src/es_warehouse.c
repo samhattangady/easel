@@ -148,6 +148,13 @@ vec3 vec3_cross(vec3 a, vec3 b) {
     return result;
 }
 
+vec3 vec3_scale(vec3 a, float b) {
+    a.x *= b;
+    a.y *= b;
+    a.z *= b;
+    return a;
+}
+
 float vec3_dot(vec3 a, vec3 b) {
     return a.x*b.x + a.y*b.y + a.z*b.z;
 }
@@ -265,6 +272,10 @@ extern mat4 perspective_projection(float angle, float aspect_ratio, float near, 
 
 float deg_to_rad(float deg) {
     return (float) M_PI*deg/180.0f;
+}
+
+float lerp(float start, float end, float val) {
+    return start + (end-start)*val;
 }
 
 

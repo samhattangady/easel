@@ -24,5 +24,6 @@ extern void geom_destroy_geometry(EsGeometry* geom);
 
 extern SDL_bool geom_add_cone(EsGeometry* geom, vec3 root, vec3 axis, float base_radius, float height, SDL_bool close, Uint32 lod);
 extern SDL_bool geom_add_cone_origin_zaxis(EsGeometry* geom, float base_radius, float height, SDL_bool close, Uint32 lod);
+extern SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos, vec3 base_axis, float tip_radius, vec3 tip_pos, vec3 tip_axis, Uint32 lod);
 
 extern SDL_bool geom_save_obj(EsGeometry* geom, const char* filename);
