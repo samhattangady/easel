@@ -25,7 +25,7 @@ Uint32 _geom_get_vertices_from_radius(float radius, Uint32 lod) {
     // float th = SDL_acosf(2 * SDL_powf((1 - error / radius), 2) - 1);
     // Uint32 num_vertices = (Uint32) SDL_ceilf(2* (float)M_PI/th);
     // return num_vertices;
-    return 20;
+    return 5;
 }
 
 Uint32 _geom_remaining_vertices(EsGeometry* geom) {
@@ -52,7 +52,7 @@ SDL_bool geom_add_vertices_memory(EsGeometry* geom, Uint32 vertices_size) {
     if (new_vertices == NULL)
         return SDL_FALSE;
     geom->vertices = new_vertices;
-    geom->vertices_size = vertices_size;
+    geom->vertices_size += vertices_size;
     return SDL_TRUE;
 }
 
@@ -61,7 +61,7 @@ SDL_bool geom_add_faces_memory(EsGeometry* geom, Uint32 faces_size) {
     if (new_faces == NULL)
         return SDL_FALSE;
     geom->faces = new_faces;
-    geom->faces_size = faces_size;
+    geom->faces_size += faces_size;
     return SDL_TRUE;
 }
 
@@ -168,6 +168,8 @@ SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos,
     geom->num_faces += total_faces;
     vec3* vertices = (vec3*) SDL_malloc(total_vertices * sizeof(vec3));
     vec3ui* faces = (vec3ui*) SDL_malloc(total_faces * sizeof(vec3ui));
+    if (vertices == NULL || faces == NULL)
+        printf("\n\n\nCOULD NOT ALLOC MEMORY\n\n\n");
     for (Uint32 i=0; i<base_num_vertices; i++) {
         float angle = (i-1.0f) / (base_num_vertices*1.0f) * (2.0f* (float)M_PI);
         float x = SDL_sinf(angle) * base_radius;
@@ -194,7 +196,10 @@ SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos,
         faces[2*i + 0] = build_vec3ui(first_vertex+i, first_vertex+i+1, first_vertex+base_num_vertices+i);
         faces[2*i + 1] = build_vec3ui(first_vertex+i+1, first_vertex+base_num_vertices+i+1, first_vertex+base_num_vertices+i);
     }
-    // TODO (22 Nov 2020 sam): Close the last face.
+    // TODO (23 Nov 2020 sam): Correctly close the last face
+    Uint32 last_index = 2*(base_num_vertices-1);
+    faces[last_index + 0] = build_vec3ui(1, 1, 1);
+    faces[last_index + 1] = build_vec3ui(1, 1, 1);
     SDL_memcpy(&geom->vertices[first_vertex], vertices, sizeof(vec3)*total_vertices);
     SDL_memcpy(&geom->faces[first_face], faces, sizeof(vec3ui)*total_faces);
     SDL_free(vertices);

@@ -287,7 +287,6 @@ int append_chars(string* base, char* chars) {
         should_realloc = 1;
     }
     if (should_realloc == 1) {
-        printf("reallocing... append_chars\n");
         base->text = (char*) realloc(base->text, memory_allotted);
         base->memory_allotted = memory_allotted;
     }

@@ -7,5 +7,6 @@ int main(int argc, char** argv) {
     SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
     SDL_Log("hello trees\n");
     trees_test();
+    SDL_Log("created trees\n");
     return 0;
 }
