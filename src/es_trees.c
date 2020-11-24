@@ -13,6 +13,7 @@ Uint32 _get_num_branches(EsTree* tree, Uint32 max_branches, float offset, float 
 float _shape_ratio(EsTree* tree, float ratio);
 float _get_branch_length(EsTree* tree, Uint32 depth, float parent_length, float offset);
 float _get_branch_start_length(EsTree* tree, float length, Uint32 depth);
+vec3 _lerp_branch(EsTree* tree, Uint32 root, float length);
 
 EsCrossSection _trees_build_cs(float radius, vec3 position, vec3 axis, Uint32 depth, Uint32 num_children, Uint32 child1) {
     EsCrossSection cs;
@@ -76,16 +77,36 @@ vec3 _branch_axis_rotation(EsTree* tree, vec3 current_axis, vec3 rotation_axis, 
     return rotate_about_origin_axis(current_axis, angle, rotation_axis);
 }
 
+vec3 _lerp_branch(EsTree* tree, Uint32 root, float length) {
+    EsCrossSection cs = tree->cross_sections[root];
+    float rem = length;
+    while (cs.num_children > 0) {
+        // TODO (24 Nov 2020 sam): BranchSplitRefactor
+        EsCrossSection child = tree->cross_sections[cs.children[0]];
+        vec3 axis = vec3_sub(child.position, cs.position);
+        float dist = vec3_magnitude(axis);
+        if (rem < dist) {
+            float offset = rem / dist;
+            return vec3_add(cs.position, vec3_scale(axis, offset));
+        }
+        cs = child;
+        rem -= dist;
+    }
+    SDL_Log("ERROR: Could not lerp branch: root=%i, length=%f\n", root, length);
+    return build_vec3(10.0f, 10.0f, 10.0f);
+}
+
 // TODO (22 Nov 2020 sam): Implement get_next_cs_id or something. Function that gives the current cs_id
 // and incrments num. Also checks size and reallocs if required.
 
 SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rotation_axis, Uint32 depth, float parent_length, float parent_radius, float offset) {
-    Uint32 index = tree->num_cross_sections;
+    Uint32 branch_root = tree->num_cross_sections;
     Uint32 num_segments = tree->params.curves_res[depth];
     Uint32 root_index = tree->num_roots;
     tree->num_cross_sections++;
     tree->num_roots++;
-    tree->roots[root_index] = index;
+    tree->roots[root_index] = branch_root;
+    Uint32 index = branch_root;
     float length = _get_branch_length(tree, depth, parent_length, offset);
     float base_radius;
     if (depth == 0)
@@ -129,7 +150,7 @@ SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rot
             float child_offset = lerp(branch_start, branch_end, child_offset_ratio);
             float radius_at_child = lerp(base_radius, tip_radius, child_offset_ratio);
             // TODO (23 Nov 2020 sam): Pos has to trace along the parent. Can't just lerp
-            vec3 child_pos = build_vec3(0.0f, lerp(branch_start, branch_end, child_offset_ratio), 0.0f);
+            vec3 child_pos = _lerp_branch(tree, branch_root, lerp(branch_start, branch_end, child_offset_ratio));
             vec3 child_axis = build_vec3(0.0f, 0.0f, 1.0f);
             vec3 child_rotation_axis = build_vec3(1.0f, 0.0f, 0.0f);
             SDL_Log("generating branch num %i: %f\n", i, child_offset_ratio);
