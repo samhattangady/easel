@@ -214,19 +214,22 @@ SDL_bool geom_add_cone_origin_zaxis(EsGeometry* geom, float base_radius, float h
 }
 
 SDL_bool geom_save_obj(EsGeometry* geom, const char* filename) {
-    string contents = empty_string();
-    append_chars(&contents, "o es_geom\n");
+    SDL_RWops* obj_file;
+    char* buffer = (char*) SDL_malloc(256 * sizeof(char));
+    obj_file = SDL_RWFromFile(filename, "w");
+    char* header = "o es_geom\n";
+    SDL_RWwrite(obj_file, header, 1, SDL_strlen(header));
     for (Uint32 i=0; i<geom->num_vertices; i++) {
         vec3 vert = geom->vertices[i];
-        append_sprintf(&contents, "v %f %f %f\n", vert.x, vert.y, vert.z);
+        SDL_snprintf(buffer, 256, "v %f %f %f\n", vert.x, vert.y, vert.z);
+        SDL_RWwrite(obj_file, buffer, 1, SDL_strlen(buffer));
     }
     for (Uint32 i=0; i<geom->num_faces; i++) {
         vec3ui face = geom->faces[i];
-        append_sprintf(&contents, "f %i %i %i\n", face.x+1, face.y+1, face.z+1);
+        SDL_snprintf(buffer, 256, "f %i %i %i\n", face.x+1, face.y+1, face.z+1);
+        SDL_RWwrite(obj_file, buffer, 1, SDL_strlen(buffer));
     }
-    SDL_RWops* obj_file;
-    obj_file = SDL_RWFromFile(filename, "w");
-    SDL_RWwrite(obj_file, contents.text, 1, string_length(&contents));
     SDL_RWclose(obj_file);
+    SDL_free(buffer);
     return SDL_TRUE;
 }
