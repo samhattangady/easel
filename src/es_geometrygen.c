@@ -198,8 +198,9 @@ SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos,
     }
     // TODO (23 Nov 2020 sam): Correctly close the last face
     Uint32 last_index = 2*(base_num_vertices-1);
-    faces[last_index + 0] = build_vec3ui(1, 1, 1);
-    faces[last_index + 1] = build_vec3ui(1, 1, 1);
+    Uint32 last_vertex = base_num_vertices-1;
+    faces[last_index + 0] = build_vec3ui(first_vertex+last_vertex, first_vertex+0, first_vertex+base_num_vertices+last_vertex);
+    faces[last_index + 1] = build_vec3ui(first_vertex+0, first_vertex+base_num_vertices+0, first_vertex+base_num_vertices+last_vertex);
     SDL_memcpy(&geom->vertices[first_vertex], vertices, sizeof(vec3)*total_vertices);
     SDL_memcpy(&geom->faces[first_face], faces, sizeof(vec3ui)*total_faces);
     SDL_free(vertices);
