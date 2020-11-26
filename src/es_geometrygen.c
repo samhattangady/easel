@@ -208,6 +208,59 @@ SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos,
     return SDL_TRUE;
 }
 
+SDL_bool geom_add_oval(EsGeometry* geom, vec3 position, vec3 axis, vec3 normal, float length, float width, Uint32 lod) {
+    Uint32 base_num_vertices = _geom_get_vertices_from_radius(width, lod);
+    Uint32 total_vertices = base_num_vertices + 1;
+    Uint32 total_faces = base_num_vertices;
+    if (_geom_remaining_vertices(geom) < total_vertices) {
+        // We just add extra. Don't need to be exact.
+        SDL_bool resize = geom_add_vertices_memory(geom, total_vertices);
+        if (!resize) {
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Add cone : Could not alloc vertices\n");
+            return SDL_FALSE;
+        }
+    }
+    if (_geom_remaining_faces(geom) < total_faces) {
+        SDL_bool resize = geom_add_faces_memory(geom, total_faces);
+        if (!resize) {
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Add cone : Could not alloc faces\n");
+            return SDL_FALSE;
+        }
+    }
+    Uint32 first_vertex = geom->num_vertices;
+    Uint32 first_face = geom->num_faces;
+    geom->num_vertices += total_vertices;
+    geom->num_faces += total_faces;
+    vec3* vertices = (vec3*) SDL_malloc(total_vertices * sizeof(vec3));
+    vec3ui* faces = (vec3ui*) SDL_malloc(total_faces * sizeof(vec3ui));
+    if (vertices == NULL || faces == NULL)
+        printf("\n\n\nCOULD NOT ALLOC MEMORY\n\n\n");
+    for (Uint32 i=0; i<base_num_vertices; i++) {
+        float angle = (i*1.0f) / (base_num_vertices*1.0f) * (2.0f* (float)M_PI);
+        float x = SDL_sinf(angle) * width;
+        float y = SDL_cosf(angle) * length;
+        vertices[i] = build_vec3(x, 0.0f, y);
+    }
+    vertices[base_num_vertices] = build_vec3(0.0f, 0.0f, 0.0f);
+    vec3 y_axis = build_vec3(0.0f, 1.0f, 0.0f);
+    normal = vec3_normalize(normal);
+    vec3 perp_axis = vec3_cross(y_axis, normal);
+    float angle = SDL_acosf(vec3_dot(y_axis, normal));
+    for (Uint32 i=0; i<total_vertices; i++) {
+        vertices[i] = vec3_add(position, rotate_about_origin_axis(vertices[i], angle, perp_axis));
+    }
+    // TODO (26 Nov 2020 sam): align with axis as well.
+    for (Uint32 i=0; i<base_num_vertices-1; i++) {
+        faces[i] = build_vec3ui(first_vertex+i, first_vertex+i+1, first_vertex+base_num_vertices);
+    }
+    faces[base_num_vertices-1] = build_vec3ui(first_vertex+base_num_vertices-1, first_vertex, first_vertex+base_num_vertices);
+    SDL_memcpy(&geom->vertices[first_vertex], vertices, sizeof(vec3)*total_vertices);
+    SDL_memcpy(&geom->faces[first_face], faces, sizeof(vec3ui)*total_faces);
+    SDL_free(vertices);
+    SDL_free(faces);
+    return SDL_TRUE;
+}
+
 SDL_bool geom_add_cone_origin_zaxis(EsGeometry* geom, float base_radius, float height, SDL_bool close, Uint32 lod) {
     const vec3 ORIGIN = build_vec3(0.0f, 0.0f, 0.0f);
     const vec3 ZAXIS = build_vec3(0.0f, 0.0f, 1.0f);

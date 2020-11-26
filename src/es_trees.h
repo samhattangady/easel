@@ -33,6 +33,7 @@ typedef struct {
     Uint32 branches[4];
     float seg_splits[4];
     EsVarFloat split_angles[4];
+    float quality;
     Uint32 leaves;
     Uint32 leaf_shape;
     float leaf_scale;
@@ -55,12 +56,23 @@ typedef struct {
 } EsCrossSection;
 
 typedef struct {
+    vec3 position;
+    vec3 axis;
+    vec3 normal;
+    float length;
+    float width;
+} EsLeaf;
+
+typedef struct {
     Uint32 num_cross_sections;
     Uint32 cross_sections_size;
     EsCrossSection* cross_sections;
     Uint32 num_roots;
     Uint32 roots_size;
     Uint32* roots;
+    Uint32 num_leaves;
+    Uint32 leaves_size;
+    EsLeaf* leaves;
     EsTreeParams params;
 } EsTree;
 
