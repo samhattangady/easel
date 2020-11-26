@@ -169,7 +169,7 @@ SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos,
     vec3* vertices = (vec3*) SDL_malloc(total_vertices * sizeof(vec3));
     vec3ui* faces = (vec3ui*) SDL_malloc(total_faces * sizeof(vec3ui));
     if (vertices == NULL || faces == NULL)
-        printf("\n\n\nCOULD NOT ALLOC MEMORY\n\n\n");
+        SDL_Log("\n\n\nCOULD NOT ALLOC MEMORY\n\n\n");
     for (Uint32 i=0; i<base_num_vertices; i++) {
         float angle = (i-1.0f) / (base_num_vertices*1.0f) * (2.0f* (float)M_PI);
         float x = SDL_sinf(angle) * base_radius;
@@ -234,7 +234,7 @@ SDL_bool geom_add_oval(EsGeometry* geom, vec3 position, vec3 axis, vec3 normal, 
     vec3* vertices = (vec3*) SDL_malloc(total_vertices * sizeof(vec3));
     vec3ui* faces = (vec3ui*) SDL_malloc(total_faces * sizeof(vec3ui));
     if (vertices == NULL || faces == NULL)
-        printf("\n\n\nCOULD NOT ALLOC MEMORY\n\n\n");
+        SDL_Log("\n\n\nCOULD NOT ALLOC MEMORY\n\n\n");
     for (Uint32 i=0; i<base_num_vertices; i++) {
         float angle = (i*1.0f) / (base_num_vertices*1.0f) * (2.0f* (float)M_PI);
         float x = SDL_sinf(angle) * width;

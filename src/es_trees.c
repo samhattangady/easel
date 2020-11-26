@@ -1,6 +1,7 @@
 #include "es_trees.h"
 #include "es_geometrygen.h"
 
+// For rand and RAND_MAX
 #include <stdlib.h>
 
 #define TREES_DEFAULT_CS 2048
@@ -257,7 +258,7 @@ SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rot
     }
     if (depth == tree->params.levels-1) {
         // generate leaves
-        Uint32 num_leaves = (Uint32) tree->params.leaves * _shape_ratio(tree, 4, (offset/parent_length));
+        Uint32 num_leaves = (Uint32) tree->params.leaves * (Uint32) _shape_ratio(tree, 4, (offset/parent_length));
         float branch_start = _get_branch_start_length(tree, length, param_ref_depth);
         float branch_end = length;
         vec3 current_rotation = build_vec3(0.0f, 0.0f, 1.0f);
@@ -276,15 +277,16 @@ SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rot
             tree->leaves[leaf_id].normal = child_rotation_axis;
             // tree->leaves[leaf_id].normal = child_axis;
             // tree->leaves[leaf_id].axis = child_rotation_axis;
-            tree->leaves[leaf_id].length = tree->params.leaf_scale / sqrt(tree->params.quality);
-            tree->leaves[leaf_id].width = tree->params.leaf_scale * tree->params.leaf_scale_x / sqrt(tree->params.quality);
+            tree->leaves[leaf_id].length = tree->params.leaf_scale / SDL_sqrtf(tree->params.quality);
+            tree->leaves[leaf_id].width = tree->params.leaf_scale * tree->params.leaf_scale_x / SDL_sqrtf(tree->params.quality);
             tree->leaves[leaf_id].position = vec3_add(child_pos, vec3_scale(child_axis, tree->leaves[leaf_id].length));
         }
     }
     return SDL_TRUE;
 }
 
-EsTree trees_test() {
+EsTree trees_test(const char* objname) {
+    srand(SDL_GetTicks());
     EsTree tree;
     // Quaking Aspen params
     tree.params.quality = 1.0f;
@@ -367,8 +369,8 @@ EsTree trees_test() {
     tree.params.split_angles[3].val_v = 0;
     tree.params.leaves = 25;
     tree.params.leaf_shape = 0;
-    tree.params.leaf_scale = 0.17;
-    tree.params.leaf_scale_x = 1;
+    tree.params.leaf_scale = 0.17f;
+    tree.params.leaf_scale_x = 1.0f;
     tree.params.attraction_up = 0.5;
     tree.params.prune_ratio = 0;
     tree.params.prune_width = 0.5;
@@ -389,7 +391,7 @@ EsTree trees_test() {
     time = _get_time_in_seconds();
     trees_generate(&tree);
     SDL_Log("generation took %f seconds\n", _get_time_in_seconds()-time);
-    trees_to_obj(&tree, "tree.obj");
+    trees_to_obj(&tree, objname);
     return tree;
 }
 

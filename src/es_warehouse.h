@@ -88,15 +88,4 @@ extern mat4 perspective_projection(float angle, float aspect_ratio, float near, 
 extern float deg_to_rad(float deg);
 extern float lerp(float start, float end, float val);
 
-extern int append_chars(string* base, char* chars);
-extern string empty_string();
-extern string string_from(char* text);
-extern string stringf(char* base, ...);
-extern int clear_string(string* s);
-extern int print_string(string* s);
-extern int append_string(string* base, string* appendage);
-extern int dispose_string(string* base);
-extern Uint32 string_length(string* s);
-extern int append_sprintf(string* s, char* base, ...);
-
 #endif

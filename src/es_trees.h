@@ -76,6 +76,6 @@ typedef struct {
     EsTreeParams params;
 } EsTree;
 
-extern EsTree trees_test();
+extern EsTree trees_test(const char* objname);
 extern SDL_bool trees_generate(EsTree* tree);
 extern SDL_bool trees_to_obj(EsTree* tree, const char* filename);
