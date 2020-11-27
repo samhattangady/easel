@@ -65,6 +65,7 @@ extern mat4 build_mat4(float a1, float a2, float a3, float a4,
                        float d1, float d2, float d3, float d4);
 extern mat4 look_at(vec3 eye, vec3 target, vec3 up);
 extern mat4 look_at_z(vec3 eye, vec3 target);
+extern mat4 look_at_y(vec3 eye, vec3 target);
 extern vec3 vec3_sub(vec3 a, vec3 b);
 extern vec3 vec3_add(vec3 a, vec3 b);
 extern vec3 vec3_cross(vec3 a, vec3 b);

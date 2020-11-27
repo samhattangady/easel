@@ -46,6 +46,7 @@ SDL_bool _painter_create_device_and_queues(EsPainter* painter);
 SDL_bool _painter_load_shaders(EsPainter* painter, ShaderData* shader, const char* vertex_spirv_file, const char* fragment_spirv_file);
 SDL_bool _painter_create_descriptor_set_layout(EsPainter* painter, ShaderData* shader);
 SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader);
+SDL_bool _painter_copy_buffer(EsPainter* painter, VkBuffer* src, VkBuffer* dst, Uint32 size);
 
 static void _painter_read_obj_file(const char* filename, const int is_mtl, const char *obj_filename, char** data, size_t* len) {
     obj_filename;
@@ -219,6 +220,8 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     tinyobj_attrib_free(&attrib);
     tinyobj_shapes_free(shapes, num_shapes);
     tinyobj_materials_free(materials, num_materials);
+
+
     return SDL_TRUE;
 }
 
@@ -469,6 +472,16 @@ SDL_bool painter_initialise(EsPainter* painter) {
     painter->buffer_resized = SDL_FALSE;
 
     return SDL_TRUE;
+}
+
+SDL_bool _painter_copy_buffer(EsPainter* painter, VkBuffer* src, VkBuffer* dst, Uint32 size) {
+    VkBufferCopy buffer_copy_info;
+    buffer_copy_info.srcOffset = 0;
+    buffer_copy_info.dstOffset = 0;
+    buffer_copy_info.size = size;
+    VkCommandBuffer command_buffer = _painter_begin_single_use_command_buffer(painter);
+    vkCmdCopyBuffer(command_buffer, *src, *dst, 1, &buffer_copy_info);
+    _painter_end_single_use_command_buffer(painter, &command_buffer);
 }
 
 SDL_bool _painter_create_swapchain(EsPainter* painter) {
@@ -1173,6 +1186,39 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         return SDL_FALSE;
     }
 
+    SDL_Log("copying grass shader data from staging buffers\n");
+    void* vertex_staging_data;
+    void* index_staging_data;
+    result = vkMapMemory(painter->device, painter->grass_shader->vertex_staging_buffer_memory, 0, painter->grass_shader->vertex_staging_buffer_size, 0, &vertex_staging_data);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Setup.", "Could not map staging buffer memory");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_memcpy(vertex_staging_data, painter->grass_shader->vertices, (size_t) painter->grass_shader->vertex_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->grass_shader->vertex_staging_buffer_memory);
+    sdl_result = _painter_copy_buffer(painter, &painter->grass_shader->vertex_staging_buffer, &painter->grass_shader->vertex_buffer, painter->grass_shader->vertex_staging_buffer_size);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not copy vertex buffer contents from staging");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+
+    result = vkMapMemory(painter->device, painter->grass_shader->index_staging_buffer_memory, 0, painter->grass_shader->index_staging_buffer_size, 0, &index_staging_data);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Setup.", "Could not map staging buffer memory");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_memcpy(index_staging_data, painter->grass_shader->indices, (size_t) painter->grass_shader->index_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->grass_shader->index_staging_buffer_memory);
+    sdl_result = _painter_copy_buffer(painter, &painter->grass_shader->index_staging_buffer, &painter->grass_shader->index_buffer, painter->grass_shader->index_staging_buffer_size);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not copy index buffer contents from staging");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+
     SDL_Log("creating skybox buffers\n");
     painter->skybox_shader->vertex_staging_buffer_size = painter->skybox_shader->num_vertices * sizeof(TutorialVertex);
     vertex_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -1209,6 +1255,37 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     sdl_result = _painter_create_buffer(painter, painter->skybox_shader->index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, index_property_flags, &painter->skybox_shader->index_buffer, &painter->skybox_shader->index_buffer_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create index buffer");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+
+    SDL_Log("copying skybox shader data from staging buffers\n");
+    result = vkMapMemory(painter->device, painter->skybox_shader->vertex_staging_buffer_memory, 0, painter->skybox_shader->vertex_staging_buffer_size, 0, &vertex_staging_data);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Rendering.", "Could not map staging buffer memory");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_memcpy(vertex_staging_data, painter->skybox_shader->vertices, (size_t) painter->skybox_shader->vertex_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->skybox_shader->vertex_staging_buffer_memory);
+    sdl_result = _painter_copy_buffer(painter, &painter->skybox_shader->vertex_staging_buffer, &painter->skybox_shader->vertex_buffer, painter->skybox_shader->vertex_staging_buffer_size);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not copy vertex buffer contents from staging");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+
+    result = vkMapMemory(painter->device, painter->skybox_shader->index_staging_buffer_memory, 0, painter->skybox_shader->index_staging_buffer_size, 0, &index_staging_data);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Rendering.", "Could not map staging buffer memory");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_memcpy(index_staging_data, painter->skybox_shader->indices, (size_t) painter->skybox_shader->index_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->skybox_shader->index_staging_buffer_memory);
+    sdl_result = _painter_copy_buffer(painter, &painter->skybox_shader->index_staging_buffer, &painter->skybox_shader->index_buffer, painter->skybox_shader->index_staging_buffer_size);
+    if (!sdl_result) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not copy index buffer contents from staging");
         painter_cleanup(painter);
         return SDL_FALSE;
     }
@@ -1384,14 +1461,6 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
             painter_cleanup(painter);
             return SDL_FALSE;
         }
-        VkBufferCopy vertex_buffer_copy_info;
-        vertex_buffer_copy_info.srcOffset = 0;
-        vertex_buffer_copy_info.dstOffset = 0;
-        vertex_buffer_copy_info.size = painter->grass_shader->vertex_staging_buffer_size;
-        VkBufferCopy index_buffer_copy_info;
-        index_buffer_copy_info.srcOffset = 0;
-        index_buffer_copy_info.dstOffset = 0;
-        index_buffer_copy_info.size = painter->grass_shader->index_staging_buffer_size;
         VkRenderPassBeginInfo render_pass_begin_info;
         render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         render_pass_begin_info.pNext = NULL;
@@ -1416,16 +1485,6 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         vertex_buffers[0] = painter->grass_shader->vertex_buffer;
         VkDeviceSize offsets[1];
         offsets[0] = 0;
-        vkCmdCopyBuffer(painter->command_buffers[i], painter->grass_shader->vertex_staging_buffer, painter->grass_shader->vertex_buffer, 1, &vertex_buffer_copy_info);
-        vkCmdCopyBuffer(painter->command_buffers[i], painter->grass_shader->index_staging_buffer, painter->grass_shader->index_buffer, 1, &index_buffer_copy_info);
-        vertex_buffer_copy_info.srcOffset = 0;
-        vertex_buffer_copy_info.dstOffset = 0;
-        vertex_buffer_copy_info.size = painter->skybox_shader->vertex_staging_buffer_size;
-        index_buffer_copy_info.srcOffset = 0;
-        index_buffer_copy_info.dstOffset = 0;
-        index_buffer_copy_info.size = painter->skybox_shader->index_staging_buffer_size;
-        vkCmdCopyBuffer(painter->command_buffers[i], painter->skybox_shader->vertex_staging_buffer, painter->skybox_shader->vertex_buffer, 1, &vertex_buffer_copy_info);
-        vkCmdCopyBuffer(painter->command_buffers[i], painter->skybox_shader->index_staging_buffer, painter->skybox_shader->index_buffer, 1, &index_buffer_copy_info);
 
         vkCmdBeginRenderPass(painter->command_buffers[i], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->grass_shader->pipeline);
@@ -1467,44 +1526,6 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     VkResult result;
     SDL_bool sdl_result;
 
-    void* vertex_staging_data;
-    result = vkMapMemory(painter->device, painter->grass_shader->vertex_staging_buffer_memory, 0, painter->grass_shader->vertex_staging_buffer_size, 0, &vertex_staging_data);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Rendering.", "Could not map staging buffer memory");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    SDL_memcpy(vertex_staging_data, painter->grass_shader->vertices, (size_t) painter->grass_shader->vertex_staging_buffer_size);
-    vkUnmapMemory(painter->device, painter->grass_shader->vertex_staging_buffer_memory);
-
-    void* index_staging_data;
-    result = vkMapMemory(painter->device, painter->grass_shader->index_staging_buffer_memory, 0, painter->grass_shader->index_staging_buffer_size, 0, &index_staging_data);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Rendering.", "Could not map staging buffer memory");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    SDL_memcpy(index_staging_data, painter->grass_shader->indices, (size_t) painter->grass_shader->index_staging_buffer_size);
-    vkUnmapMemory(painter->device, painter->grass_shader->index_staging_buffer_memory);
-
-    result = vkMapMemory(painter->device, painter->skybox_shader->vertex_staging_buffer_memory, 0, painter->skybox_shader->vertex_staging_buffer_size, 0, &vertex_staging_data);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Rendering.", "Could not map staging buffer memory");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    SDL_memcpy(vertex_staging_data, painter->skybox_shader->vertices, (size_t) painter->skybox_shader->vertex_staging_buffer_size);
-    vkUnmapMemory(painter->device, painter->skybox_shader->vertex_staging_buffer_memory);
-
-    result = vkMapMemory(painter->device, painter->skybox_shader->index_staging_buffer_memory, 0, painter->skybox_shader->index_staging_buffer_size, 0, &index_staging_data);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Rendering.", "Could not map staging buffer memory");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    SDL_memcpy(index_staging_data, painter->skybox_shader->indices, (size_t) painter->skybox_shader->index_staging_buffer_size);
-    vkUnmapMemory(painter->device, painter->skybox_shader->index_staging_buffer_memory);
-
     vkWaitForFences(painter->device, 1, &painter->in_flight_fences[painter->frame_index], VK_TRUE, UINT64_MAX);
     result = vkAcquireNextImageKHR(painter->device, painter->swapchain, UINT64_MAX, painter->image_available_semaphores[painter->frame_index], VK_NULL_HANDLE, &image_index);
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || painter->buffer_resized) {
@@ -1519,12 +1540,12 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
         return SDL_FALSE;
     }
 
-    painter->uniform_buffer_object.time = (float) SDL_GetTicks()/1000.0f;
+    painter->uniform_buffer_object.time = (float) (SDL_GetTicks()/1000.0f);
     vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
     // painter->camera_fov += 0.001f;
     // painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 10.0f);
     vec3 base_camera = build_vec3(0.0f, 5.0f, 1.0f);
-    float angle = 3.1415 * sin(painter->uniform_buffer_object.time / 4.0f);
+    float angle = ((float) M_PI) * sin(painter->uniform_buffer_object.time / 4.0f);
     painter->camera_position = rotate_about_origin_zaxis(base_camera, angle);
     painter->uniform_buffer_object.view = look_at_z(painter->camera_position, target);
     // TODO (20 Nov 2020 sam): Add this as a `billboard_model` field in the struct.

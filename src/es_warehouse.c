@@ -140,6 +140,10 @@ mat4 look_at_z(vec3 eye, vec3 target) {
     return look_at(eye, target, build_vec3(0.0f, 0.0f, 1.0f));
 }
 
+mat4 look_at_y(vec3 eye, vec3 target) {
+    return look_at(eye, target, build_vec3(0.0f, 1.0f, 0.0f));
+}
+
 vec3 vec3_cross(vec3 a, vec3 b) {
     vec3 result;
     result.x = a.y*b.z - a.z*b.y;
