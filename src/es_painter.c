@@ -10,10 +10,10 @@
 
 #include <stdlib.h>
 
-#define GRASS_INSTANCES 2000
+#define GRASS_INSTANCES 1
 #define GRASS_NUM_VERTICES 4
 #define GRASS_MODEL_PATH "data/obj/grass3.obj"
-#define GRASS_MODEL_TEXTURE_PATH "data/img/grass3.png"
+#define GRASS_MODEL_TEXTURE_PATH "data/img/test1.png"
 #define SKYBOX_MODEL_PATH "data/obj/skybox.obj"
 #define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skybox/front.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skybox/back.jpg"
@@ -153,12 +153,12 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         tinyobj_vertex_index_t face = attrib.faces[i];
         painter->grass_shader->indices[i] = face.v_idx;
         painter->grass_shader->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
-        painter->grass_shader->vertices[face.v_idx].tex.y = 1.0f - attrib.texcoords[face.vt_idx*2 + 1];
+        painter->grass_shader->vertices[face.v_idx].tex.y = attrib.texcoords[face.vt_idx*2 + 1];
     }
     for (Uint32 i=1; i<GRASS_INSTANCES; i++) {
         float x = ((float) rand() / (float) RAND_MAX * 3.0f) - 1.5f;
-        float y = ((float) rand() / (float) RAND_MAX * 3.0f) - 1.5f;
-        float z = ((float) rand() / (float) RAND_MAX * 0.1f) - 0.05f;
+        float y = ((float) rand() / (float) RAND_MAX * 0.1f) - 0.05f;
+        float z = ((float) rand() / (float) RAND_MAX * 3.0f) - 1.5f;
         for (Uint32 j=0; j<GRASS_NUM_VERTICES; j++) {
             TutorialVertex vert = painter->grass_shader->vertices[j];
             vert.pos.x += x;
@@ -210,17 +210,13 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     }
 
     painter->uniform_buffer_object.model = identity_mat4();
-    painter->camera_position = build_vec3(0.0f, 5.0f, 0.5f);
     painter->camera_fov = 45.0f;
-    vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
-    painter->uniform_buffer_object.view = look_at_z(painter->camera_position, target);
     painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 20.0f);
     painter->uniform_buffer_object.time = 1.0f;
 
     tinyobj_attrib_free(&attrib);
     tinyobj_shapes_free(shapes, num_shapes);
     tinyobj_materials_free(materials, num_materials);
-
 
     return SDL_TRUE;
 }
@@ -1542,14 +1538,14 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
 
     painter->uniform_buffer_object.time = (float) (SDL_GetTicks()/1000.0f);
     vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
-    // painter->camera_fov += 0.001f;
-    // painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 10.0f);
-    vec3 base_camera = build_vec3(0.0f, 5.0f, 1.0f);
+    vec3 base_camera = build_vec3(0.0f, 1.0f, 5.0f);
     float angle = ((float) M_PI) * sin(painter->uniform_buffer_object.time / 4.0f);
-    painter->camera_position = rotate_about_origin_zaxis(base_camera, angle);
+    angle = 0.0f;
+    painter->camera_position = rotate_about_origin_yaxis(base_camera, angle);
+    painter->camera_position.x += 0.1;
     painter->uniform_buffer_object.view = look_at_y(painter->camera_position, target);
     // TODO (20 Nov 2020 sam): Add this as a `billboard_model` field in the struct.
-    painter->uniform_buffer_object.model = rotation_matrix_zaxis(-angle);
+    painter->uniform_buffer_object.model = rotation_matrix_yaxis(-angle);
     void* uniform_data;
     result = vkMapMemory(painter->device, painter->uniform_buffers_memory[image_index], 0, painter->uniform_buffer_size, 0, &uniform_data);
     if (result != VK_SUCCESS) {
@@ -2320,6 +2316,7 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     rasterization_state_create_info.rasterizerDiscardEnable = VK_FALSE;
     rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_FILL;
     rasterization_state_create_info.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterization_state_create_info.cullMode = VK_CULL_MODE_NONE; // nocheckin
     rasterization_state_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterization_state_create_info.depthBiasEnable = VK_FALSE;
     rasterization_state_create_info.depthBiasConstantFactor = 0.0f;
