@@ -1547,7 +1547,7 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     vec3 base_camera = build_vec3(0.0f, 5.0f, 1.0f);
     float angle = ((float) M_PI) * sin(painter->uniform_buffer_object.time / 4.0f);
     painter->camera_position = rotate_about_origin_zaxis(base_camera, angle);
-    painter->uniform_buffer_object.view = look_at_z(painter->camera_position, target);
+    painter->uniform_buffer_object.view = look_at_y(painter->camera_position, target);
     // TODO (20 Nov 2020 sam): Add this as a `billboard_model` field in the struct.
     painter->uniform_buffer_object.model = rotation_matrix_zaxis(-angle);
     void* uniform_data;
