@@ -45,6 +45,7 @@ typedef struct {
     vec3 pos;
     vec3 color;
     vec2 tex;
+    vec3 normal;
 } TutorialVertex;
 
 typedef struct string {

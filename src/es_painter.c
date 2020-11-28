@@ -10,10 +10,10 @@
 
 #include <stdlib.h>
 
-#define GRASS_INSTANCES 1
+#define GRASS_INSTANCES 1000
 #define GRASS_NUM_VERTICES 4
 #define GRASS_MODEL_PATH "data/obj/grass3.obj"
-#define GRASS_MODEL_TEXTURE_PATH "data/img/test1.png"
+#define GRASS_MODEL_TEXTURE_PATH "data/img/grass3.png"
 #define SKYBOX_MODEL_PATH "data/obj/skybox.obj"
 #define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skybox/front.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skybox/back.jpg"
@@ -144,9 +144,14 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         vert.pos.x = attrib.vertices[i*3 + 0];
         vert.pos.y = attrib.vertices[i*3 + 1];
         vert.pos.z = attrib.vertices[i*3 + 2];
-        vert.color.x = 0.0f;
-        vert.color.y = 0.0f;
-        vert.color.z = 0.0f;
+        // We're loading color field with same data for ease of billboarding
+        vert.color.x = attrib.vertices[i*3 + 0];
+        vert.color.y = attrib.vertices[i*3 + 1];
+        vert.color.z = attrib.vertices[i*3 + 2];
+        // TODO (28 Nov 2020 sam): Load this from the tinyobj parse
+        vert.normal.x = 0.0f;
+        vert.normal.y = 0.0f;
+        vert.normal.z = 1.0f;
         painter->grass_shader->vertices[i] = vert;
     }
     for (Uint32 i=0; i<attrib.num_faces; i++) {
@@ -1539,13 +1544,11 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     painter->uniform_buffer_object.time = (float) (SDL_GetTicks()/1000.0f);
     vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
     vec3 base_camera = build_vec3(0.0f, 1.0f, 5.0f);
-    float angle = ((float) M_PI) * sin(painter->uniform_buffer_object.time / 4.0f);
-    angle = 0.0f;
+    float angle = ((float) M_PI) * sin(painter->uniform_buffer_object.time / 5.2f);
     painter->camera_position = rotate_about_origin_yaxis(base_camera, angle);
-    painter->camera_position.x += 0.1;
+    painter->uniform_buffer_object.camera_position = painter->camera_position;
     painter->uniform_buffer_object.view = look_at_y(painter->camera_position, target);
-    // TODO (20 Nov 2020 sam): Add this as a `billboard_model` field in the struct.
-    painter->uniform_buffer_object.model = rotation_matrix_yaxis(-angle);
+
     void* uniform_data;
     result = vkMapMemory(painter->device, painter->uniform_buffers_memory[image_index], 0, painter->uniform_buffer_size, 0, &uniform_data);
     if (result != VK_SUCCESS) {
@@ -2246,7 +2249,7 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     vertex_input_binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
     VkVertexInputBindingDescription vertex_binding_descriptions[1];
     vertex_binding_descriptions[0] = vertex_input_binding_description;
-    VkVertexInputAttributeDescription vertex_input_attributes[3];
+    VkVertexInputAttributeDescription vertex_input_attributes[4];
     vertex_input_attributes[0].location = 0;
     vertex_input_attributes[0].binding = 0;
     vertex_input_attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
@@ -2259,6 +2262,10 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     vertex_input_attributes[2].binding = 0;
     vertex_input_attributes[2].format = VK_FORMAT_R32G32_SFLOAT;
     vertex_input_attributes[2].offset = sizeof(vec3) + sizeof(vec3);
+    vertex_input_attributes[3].location = 3;
+    vertex_input_attributes[3].binding = 0;
+    vertex_input_attributes[3].format = VK_FORMAT_R32G32B32_SFLOAT;
+    vertex_input_attributes[3].offset = sizeof(vec3) + sizeof(vec3) + sizeof(vec2);
     VkPipelineShaderStageCreateInfo vertex_shader_stage_create_info;
     vertex_shader_stage_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     vertex_shader_stage_create_info.pNext = NULL;
@@ -2281,7 +2288,7 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     vertex_input_state_create_info.flags = 0;
     vertex_input_state_create_info.vertexBindingDescriptionCount = 1;
     vertex_input_state_create_info.pVertexBindingDescriptions = vertex_binding_descriptions;
-    vertex_input_state_create_info.vertexAttributeDescriptionCount = 3;
+    vertex_input_state_create_info.vertexAttributeDescriptionCount = 4;
     vertex_input_state_create_info.pVertexAttributeDescriptions = vertex_input_attributes;
     VkPipelineInputAssemblyStateCreateInfo input_assembly_state_create_info;
     input_assembly_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
