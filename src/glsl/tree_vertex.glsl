@@ -57,18 +57,18 @@ mat4 rotation_matrix_axis(float angle, vec3 axis) {
 
 void main() {
     vec4 pos = vec4(inPosition, 1.0f);
-    vec4 base_obj_pos = vec4(inColor, 1.0f);
-    vec4 obj_pos = vec4(inColor, 1.0f);
-    obj_pos.x += (1.0-inTexCoord.y)/50.0 * sin(ubo.time*cos(noise(vec2(pos.x, pos.y)))*1.7);
-    obj_pos.y += (1.0-inTexCoord.y)/80.0 * abs(sin(ubo.time*1.3*pos.y*0.5));
-    vec3 pos_to_cam = normalize(vec3(ubo.camera_position.x, 0, ubo.camera_position.z) - vec3(pos.x, 0, pos.z));
-    float angle_to_camera = acos(dot(pos_to_cam, inNormal));
-    // acos only works from 0 to pi
-    if (pos_to_cam.x > inNormal.x)
-        angle_to_camera *= -1.0;
-    mat4 rotation_mat = rotation_matrix_axis(-angle_to_camera, vec3(0,1.0,0));
-    obj_pos = rotation_mat * obj_pos;
-    pos += obj_pos-base_obj_pos;
+    // vec4 base_obj_pos = vec4(inColor, 1.0f);
+    // vec4 obj_pos = vec4(inColor, 1.0f);
+    // obj_pos.x += (1.0-inTexCoord.y)/50.0 * sin(ubo.time*cos(noise(vec2(pos.x, pos.y)))*1.7);
+    // obj_pos.y += (1.0-inTexCoord.y)/80.0 * abs(sin(ubo.time*1.3*pos.y*0.5));
+    // vec3 pos_to_cam = normalize(vec3(ubo.camera_position.x, 0, ubo.camera_position.z) - vec3(pos.x, 0, pos.z));
+    // float angle_to_camera = acos(dot(pos_to_cam, inNormal));
+    // // acos only works from 0 to pi
+    // if (pos_to_cam.x < inNormal.x)
+    //     angle_to_camera *= -1.0;
+    // mat4 rotation_mat = rotation_matrix_axis(-angle_to_camera, vec3(0,1.0,0));
+    // obj_pos = rotation_mat * obj_pos;
+    // pos += obj_pos-base_obj_pos;
     gl_Position = ubo.proj * ubo.view * ubo.model * pos;
     fragColor = inColor;
     fragTexCoord = inTexCoord;

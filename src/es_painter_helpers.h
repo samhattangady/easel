@@ -1077,6 +1077,7 @@ void _painter_cleanup_swapchain(EsPainter* painter) {
     vkDeviceWaitIdle(painter->device);
     _painter_shader_cleanup(painter, painter->grass_shader);
     _painter_shader_cleanup(painter, painter->skybox_shader);
+    _painter_shader_cleanup(painter, painter->tree_shader);
     if (painter->swapchain_framebuffers) {
         for (Uint32 i=0; i<painter->swapchain_image_count; i++)
             vkDestroyFramebuffer(painter->device, painter->swapchain_framebuffers[i], NULL);
@@ -1782,7 +1783,8 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     rasterization_state_create_info.rasterizerDiscardEnable = VK_FALSE;
     rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_FILL;
     rasterization_state_create_info.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterization_state_create_info.cullMode = VK_CULL_MODE_NONE; // nocheckin
+    rasterization_state_create_info.cullMode = VK_CULL_MODE_FRONT_BIT;
+    // rasterization_state_create_info.cullMode = VK_CULL_MODE_NONE; // nocheckin
     rasterization_state_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterization_state_create_info.depthBiasEnable = VK_FALSE;
     rasterization_state_create_info.depthBiasConstantFactor = 0.0f;

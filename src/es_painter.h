@@ -91,6 +91,7 @@ typedef struct {
     Uint32 start_time;
     ShaderData* grass_shader;
     ShaderData* skybox_shader;
+    ShaderData* tree_shader;
 } EsPainter;
 
 extern SDL_bool painter_initialise(EsPainter* painter);
