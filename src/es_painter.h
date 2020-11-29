@@ -7,6 +7,13 @@
 #include "es_warehouse.h"
 
 typedef struct {
+    vec3 pos;
+    vec3 color;
+    vec2 tex;
+    vec3 normal;
+} EsVertex;
+
+typedef struct {
     mat4 model;
     mat4 view;
     mat4 proj;
@@ -15,7 +22,7 @@ typedef struct {
 } UniformBufferObject;
 
 typedef struct {
-    TutorialVertex* vertices;
+    EsVertex* vertices;
     Uint32* indices;
     Uint32 num_vertices;
     Uint32 num_indices;
@@ -36,9 +43,6 @@ typedef struct {
     VkDeviceMemory texture_image_memory;
     VkImageView texture_image_view;
     VkSampler texture_sampler;
-    VkImage color_image;
-    VkDeviceMemory color_image_memory;
-    VkImageView color_image_view;
     VkDescriptorSetLayout descriptor_set_layout;
     VkShaderModule vertex_shader_module;
     VkShaderModule fragment_shader_module;
@@ -67,6 +71,7 @@ typedef struct {
     VkFence* in_flight_fences;
     VkFence* images_in_flight;
     VkQueue presentation_queue;
+    VkFormat swapchain_image_format;
     VkCommandBuffer* command_buffers;
     VkQueue graphics_queue;
     VkSampleCountFlagBits msaa_samples;
@@ -75,6 +80,9 @@ typedef struct {
     UniformBufferObject uniform_buffer_object;
     VkBuffer* uniform_buffers;
     VkDeviceMemory* uniform_buffers_memory;
+    VkImageView color_image_view;
+    VkImage color_image;
+    VkDeviceMemory color_image_memory;
     VkImage depth_image;
     VkDeviceMemory depth_image_memory;
     VkImageView depth_image_view;

@@ -8,6 +8,7 @@ int main(int argc, char** argv) {
     argc; argv;
     SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
     SDL_bool result;
+    SDL_bool run_app = SDL_TRUE;
 
     EsPainter painter;
     result = painter_initialise(&painter);
@@ -16,7 +17,7 @@ int main(int argc, char** argv) {
 
     SDL_Log("Running Event Loop\n");
     SDL_Event e;
-    while (SDL_TRUE) {
+    while (run_app) {
         SDL_PollEvent(&e);
         if (e.type == SDL_QUIT) {
             SDL_Log("Program quit after %i ticks", e.quit.timestamp);

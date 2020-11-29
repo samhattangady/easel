@@ -41,13 +41,6 @@ typedef struct {
     vec4 d;
 } mat4;
 
-typedef struct {
-    vec3 pos;
-    vec3 color;
-    vec2 tex;
-    vec3 normal;
-} TutorialVertex;
-
 typedef struct string {
     char* text;
     Uint32 memory_allotted;
