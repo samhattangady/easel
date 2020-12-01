@@ -219,7 +219,6 @@ extern SDL_bool _painter_load_image_and_sampler(EsPainter* painter, const char* 
     VkDeviceSize tex_size;
     stbi_uc* pixels;
 
-    SDL_Log("loading grass texture\n");
     pixels = stbi_load(filepath, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
     if (!pixels) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not load texture");

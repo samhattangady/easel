@@ -123,8 +123,8 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     for (Uint32 i=0; i<attrib.num_faces; i++) {
         tinyobj_vertex_index_t face = attrib.faces[i];
         painter->skybox_shader->indices[i] = face.v_idx;
-        painter->skybox_shader->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
-        painter->skybox_shader->vertices[face.v_idx].tex.y = 1.0f - attrib.texcoords[face.vt_idx*2 + 1];
+        // painter->skybox_shader->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
+        // painter->skybox_shader->vertices[face.v_idx].tex.y = 1.0f - attrib.texcoords[face.vt_idx*2 + 1];
     }
 
     tinyobj_attrib_free(&attrib);
@@ -189,6 +189,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
     if (!sdl_result) return SDL_FALSE;
     painter->grass_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
     painter->skybox_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
+    painter->tree_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
     sdl_result = _painter_load_data(painter);
     if (!sdl_result) return SDL_FALSE;
     sdl_result = _painter_init_instance(painter);
