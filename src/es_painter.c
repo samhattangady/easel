@@ -10,17 +10,24 @@
 
 #include <stdlib.h>
 
-#define GRASS_INSTANCES 1000
+#define GRASS_INSTANCES 500
 #define GRASS_NUM_VERTICES 4
 #define GRASS_MODEL_PATH "data/obj/grass3.obj"
 #define GRASS_MODEL_TEXTURE_PATH "data/img/grass3.png"
+#define GRASS_RADIUS 7.0f
 #define SKYBOX_MODEL_PATH "data/obj/skybox.obj"
-#define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skybox/front.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skybox/back.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH2 "data/img/skybox/top.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skybox/bottom.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skybox/left.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skybox/right.jpg"
+// #define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skybox/front.jpg"
+// #define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skybox/back.jpg"
+// #define SKYBOX_MODEL_TEXTURE_PATH2 "data/img/skybox/top.jpg"
+// #define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skybox/bottom.jpg"
+// #define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skybox/left.jpg"
+// #define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skybox/right.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skyfront.png"
+#define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skyfront.png"
+#define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skyfront.png"
+#define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skyfront.png"
+#define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skydown.png"
+#define SKYBOX_MODEL_TEXTURE_PATH2 "data/img/skyup.png"
 #define TREE_MODEL_PATH "data/obj/tree.obj"
 #define TREE_MODEL_TEXTURE_PATH "data/img/tree.png"
 
@@ -75,9 +82,13 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         painter->grass_shader->vertices[face.v_idx].tex.y = attrib.texcoords[face.vt_idx*2 + 1];
     }
     for (Uint32 i=1; i<GRASS_INSTANCES; i++) {
-        float x = ((float) rand() / (float) RAND_MAX * 3.0f) - 1.5f;
-        float y = ((float) rand() / (float) RAND_MAX * 0.1f) - 0.05f;
-        float z = ((float) rand() / (float) RAND_MAX * 3.0f) - 1.5f;
+        float x = (((float) rand() / (float) RAND_MAX) - 0.5f) * GRASS_RADIUS*2.0f;
+        float z = (((float) rand() / (float) RAND_MAX) - 0.5f) * GRASS_RADIUS*2.0f;
+        if (vec3_magnitude(build_vec3(x,0,z)) > GRASS_RADIUS) {
+            i--;
+            continue;
+        }
+        float y = 1.0 * stb_perlin_noise3(x/10.0f, 0, z/10.0f, 0, 0, 0);
         for (Uint32 j=0; j<GRASS_NUM_VERTICES; j++) {
             EsVertex vert = painter->grass_shader->vertices[j];
             vert.pos.x += x;
@@ -177,7 +188,7 @@ SDL_bool _painter_load_data(EsPainter* painter) {
 
     painter->uniform_buffer_object.model = identity_mat4();
     painter->camera_fov = 45.0f;
-    painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 20.0f);
+    painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 100.0f);
 
     return SDL_TRUE;
 }
@@ -437,10 +448,10 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     }
 
     painter->uniform_buffer_object.time = (float) (SDL_GetTicks()/1000.0f);
-    vec3 target = build_vec3(0.0f, 5.0f, 0.0f);
-    vec3 base_camera = build_vec3(0.0f, 1.0f, 5.0f);
+    vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
+    vec3 base_camera = build_vec3(0.0f, 12.0f, 45.0f);
     float angle = ((float) M_PI) * SDL_sinf(painter->uniform_buffer_object.time / 5.2f);
-    angle = 0.0f;
+    // angle = 0.0f;
     painter->camera_position = rotate_about_origin_yaxis(base_camera, angle);
     painter->uniform_buffer_object.camera_position = painter->camera_position;
     painter->uniform_buffer_object.view = look_at_y(painter->camera_position, target);
