@@ -176,6 +176,13 @@ float vec3_magnitude(vec3 a) {
     return (float) SDL_sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
 }
 
+vec2 build_vec2(float x, float y) {
+    vec2 result;
+    result.x = x;
+    result.y = y;
+    return result;
+}
+
 vec3 build_vec3(float x, float y, float z) {
     vec3 result;
     result.x = x;

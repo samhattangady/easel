@@ -48,6 +48,7 @@ typedef struct string {
 
 extern void warehouse_error_popup(const char* error_header, const char* error_text);
 extern float warehouse_log_2(float num);
+extern vec2 build_vec2(float x, float y);
 extern mat4 mat4_mat4_multiply(mat4 a, mat4 b);
 extern vec4 mat4_vec4_multiply(mat4 a, vec4 b);
 extern void print_mat4(mat4 a);

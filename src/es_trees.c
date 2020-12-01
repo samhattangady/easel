@@ -200,6 +200,7 @@ Uint32 _get_next_leaf(EsTree* tree) {
 }
 
 SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rotation_axis, Uint32 depth, float parent_length, float parent_radius, float offset) {
+    SDL_Log("depth = %i\n", depth);
     Uint32 branch_root = _get_next_cs_id(tree);
     Uint32 root_index = _get_next_root(tree);
     Uint32 num_segments = tree->params.curves_res[depth];
@@ -258,11 +259,12 @@ SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rot
     }
     if (depth == tree->params.levels-1) {
         // generate leaves
-        Uint32 num_leaves = (Uint32) tree->params.leaves * (Uint32) _shape_ratio(tree, 4, (offset/parent_length));
+        Uint32 num_leaves = (Uint32) (tree->params.leaves * _shape_ratio(tree, 4, (offset/parent_length)));
         float branch_start = _get_branch_start_length(tree, length, param_ref_depth);
         float branch_end = length;
         vec3 current_rotation = build_vec3(0.0f, 0.0f, 1.0f);
         for (Uint32 i=0; i<num_leaves; i++) {
+            SDL_Log("creating leaves...\n");
             float child_offset_ratio = ((float) i + 0.5f) / (float) num_leaves;
             float child_offset = lerp(branch_start, branch_end, child_offset_ratio);
             vec3 child_pos = _lerp_branch(tree, branch_root, child_offset);
@@ -412,14 +414,15 @@ SDL_bool trees_to_obj(EsTree* tree, const char* filename) {
                 break;
             EsCrossSection base = tree->cross_sections[current_cs];
             EsCrossSection tip = tree->cross_sections[base.children[0]];
-            geom_add_cs_surface(&geom, base.radius, base.position, base.axis, tip.radius, tip.position, tip.axis, 0);
+            geom_add_cs_surface(&geom, base.radius, base.position, base.axis, tip.radius, tip.position, tip.axis, build_vec2(0.0, 0.0), 0);
             current_cs = base.children[0];
         }
     }
     for (Uint32 i=0; i<tree->num_leaves; i++) {
         EsLeaf leaf = tree->leaves[i];
-        geom_add_oval(&geom, leaf.position, leaf.axis, leaf.normal, leaf.length, leaf.width, 0);
+        geom_add_oval(&geom, leaf.position, leaf.axis, leaf.normal, leaf.length, leaf.width, build_vec2(1.0, 1.0), 0);
     }
+    SDL_Log("textures = %i\n", geom.num_textures);
     SDL_Log("meshing took %f seconds\n", _get_time_in_seconds()-time);
     time = _get_time_in_seconds();
     geom_save_obj(&geom, filename);

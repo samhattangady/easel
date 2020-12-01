@@ -13,21 +13,21 @@
 #define GRASS_INSTANCES 500
 #define GRASS_NUM_VERTICES 4
 #define GRASS_MODEL_PATH "data/obj/grass3.obj"
-#define GRASS_MODEL_TEXTURE_PATH "data/img/grass3.png"
+#define GRASS_MODEL_TEXTURE_PATH "data/img/grass4.png"
 #define GRASS_RADIUS 7.0f
 #define SKYBOX_MODEL_PATH "data/obj/skybox.obj"
-// #define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skybox/front.jpg"
-// #define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skybox/back.jpg"
-// #define SKYBOX_MODEL_TEXTURE_PATH2 "data/img/skybox/top.jpg"
-// #define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skybox/bottom.jpg"
-// #define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skybox/left.jpg"
-// #define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skybox/right.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skyfront.png"
-#define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skyfront.png"
-#define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skyfront.png"
-#define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skyfront.png"
-#define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skydown.png"
-#define SKYBOX_MODEL_TEXTURE_PATH2 "data/img/skyup.png"
+#define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skybox/front.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skybox/back.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH2 "data/img/skybox/top.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skybox/bottom.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skybox/left.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skybox/right.jpg"
+// #define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skyfront.png"
+// #define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skyfront.png"
+// #define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skyfront.png"
+// #define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skyfront.png"
+// #define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skydown.png"
+// #define SKYBOX_MODEL_TEXTURE_PATH2 "data/img/skyup.png"
 #define TREE_MODEL_PATH "data/obj/tree.obj"
 #define TREE_MODEL_TEXTURE_PATH "data/img/tree.png"
 
@@ -178,6 +178,8 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     for (Uint32 i=0; i<attrib.num_faces; i++) {
         tinyobj_vertex_index_t face = attrib.faces[i];
         painter->tree_shader->indices[i] = face.v_idx;
+        painter->tree_shader->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
+        painter->tree_shader->vertices[face.v_idx].tex.y = attrib.texcoords[face.vt_idx*2 + 1];
         // painter->tree_shader->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
         // painter->tree_shader->vertices[face.v_idx].tex.y = attrib.texcoords[face.vt_idx*2 + 1];
     }
