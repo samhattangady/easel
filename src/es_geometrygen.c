@@ -1,6 +1,9 @@
 #include "SDL.h"
 #include "es_geometrygen.h"
 
+#define STB_DS_IMPLEMENTATION
+#include "stb_ds.h"
+
 
 float _geom_error_from_lod(Uint32 lod);
 Uint32 _geom_get_vertices_from_radius(float radius, Uint32 lod);
@@ -8,6 +11,109 @@ Uint32 _geom_remaining_vertices(EsGeometry* geom);
 Uint32 _geom_remaining_faces(EsGeometry* geom);
 Uint32 _geom_remaining_textures(EsGeometry* geom);
 Uint32 _geom_remaining_normals(EsGeometry* geom);
+
+typedef struct {
+    vec3 key;
+    int value;
+} Vec3Map;
+
+typedef struct {
+    vec2 key;
+    int value;
+} Vec2Map;
+
+SDL_bool geom_simplify_geometry(EsGeometry* geom) {
+    // We want to remove all the duplicate vertices, textures and normals.
+    // The way we do this is by using hashmaps.
+    // So we create a hashmap for vertices, textures and normals, with key as vert
+    // and value as index. (where while inserting, we only increment index if the
+    // element doesn't already exist in the hashmap)
+    // Once all the hashmaps have been filled, we fill simplified with all the vertices
+    // as per their indexvalue in the hashmap. For each face, we query the hashmap for
+    // the simplified index, and load that in.
+    int vertex_index = 0;
+    int texture_index = 0;
+    int normal_index = 0;
+    Vec3Map* vertices = NULL;
+    Vec2Map* textures = NULL;
+    Vec3Map* normals = NULL;
+    hmdefault(vertices, -1);
+    hmdefault(textures, -1);
+    hmdefault(normals, -1);
+    for (Uint32 i=0; i<geom->num_vertices; i++) {
+        vec3 vert = geom->vertices[i];
+        if (hmget(vertices, vert) < 0) {
+            hmput(vertices, vert, vertex_index);
+            vertex_index++;
+        }
+    }
+    SDL_Log("total vertices = %i, unique vertices = %i\n", geom->num_vertices, vertex_index);
+    for (Uint32 i=0; i<geom->num_textures; i++) {
+        vec2 tex = geom->textures[i];
+        if (hmget(textures, tex) < 0) {
+            hmput(textures, tex, texture_index);
+            texture_index++;
+        }
+    }
+    SDL_Log("total textures = %i, unique textures = %i\n", geom->num_textures, texture_index);
+    for (Uint32 i=0; i<geom->num_normals; i++) {
+        vec3 norm = geom->normals[i];
+        if (hmget(normals, norm) < 0) {
+            hmput(normals, norm, normal_index);
+            normal_index++;
+        }
+    }
+    SDL_Log("total normals = %i, unique normals = %i\n", geom->num_normals, normal_index);
+    EsGeometry simple = geom_init_geometry_size(vertex_index, geom->num_faces, texture_index, normal_index);
+    for (Uint32 i=0; i<geom->num_vertices; i++)
+        simple.vertices[hmget(vertices, geom->vertices[i])] = geom->vertices[i];
+    for (Uint32 i=0; i<geom->num_textures; i++)
+        simple.textures[hmget(textures, geom->textures[i])] = geom->textures[i];
+    for (Uint32 i=0; i<geom->num_normals; i++)
+        simple.normals[hmget(normals, geom->normals[i])] = geom->normals[i];
+    for (Uint32 i=0; i<geom->num_faces; i++) {
+        vec3ui verts_old = geom->faces[i].verts;
+        vec3ui texs_old = geom->faces[i].texs;
+        vec3ui norms_old = geom->faces[i].norms;
+        // vec3ui verts_new = build_vec3ui(hmget(vertices, geom->vertices[verts_old.x]),
+        //                                 hmget(vertices, geom->vertices[verts_old.y]),
+        //                                 hmget(vertices, geom->vertices[verts_old.z]));
+        // vec3ui texs_new = build_vec3ui(hmget(textures, geom->textures[texs_old.x]),
+        //                                hmget(textures, geom->textures[texs_old.y]),
+        //                                hmget(textures, geom->textures[texs_old.z]));
+        // vec3ui norms_new = build_vec3ui(hmget(normals, geom->normals[norms_old.x]),
+        //                                 hmget(normals, geom->normals[norms_old.y]),
+        //                                 hmget(normals, geom->normals[norms_old.z]));
+        // SDL_Log("Face %i verts (%i, %i, %i) -> (%i, %i, %i)\n", i,
+        //         verts_old.x, verts_old.y, verts_old.z,
+        //         verts_new.x, verts_new.y, verts_new.z);
+        // geom->faces[i].verts = verts_new;
+        // geom->faces[i].texs = texs_new;
+        // geom->faces[i].norms = norms_new;
+        geom->faces[i].verts.x = hmget(vertices, geom->vertices[verts_old.x]);
+        geom->faces[i].verts.y = hmget(vertices, geom->vertices[verts_old.y]);
+        geom->faces[i].verts.z = hmget(vertices, geom->vertices[verts_old.z]);
+        geom->faces[i].texs.x = hmget(textures, geom->textures[texs_old.x]);
+        geom->faces[i].texs.y = hmget(textures, geom->textures[texs_old.y]);
+        geom->faces[i].texs.z = hmget(textures, geom->textures[texs_old.z]);
+        geom->faces[i].norms.x = hmget(normals, geom->normals[norms_old.x]);
+        geom->faces[i].norms.y = hmget(normals, geom->normals[norms_old.y]);
+        geom->faces[i].norms.z = hmget(normals, geom->normals[norms_old.z]);
+    }
+    SDL_free(geom->vertices);
+    SDL_free(geom->textures);
+    SDL_free(geom->normals);
+    geom->vertices = simple.vertices;
+    geom->textures = simple.textures;
+    geom->normals = simple.normals;
+    geom->num_vertices = vertex_index;
+    geom->num_textures = texture_index;
+    geom->num_normals = normal_index;
+    geom->vertices_size = vertex_index;
+    geom->textures_size = texture_index;
+    geom->normals_size = normal_index;
+    return SDL_TRUE;
+}
 
 float _geom_error_from_lod(Uint32 lod) {
     // Gives the pixel error
@@ -27,7 +133,7 @@ Uint32 _geom_get_vertices_from_radius(float radius, Uint32 lod) {
     // float th = SDL_acosf(2 * SDL_powf((1 - error / radius), 2) - 1);
     // Uint32 num_vertices = (Uint32) SDL_ceilf(2* (float)M_PI/th);
     // return num_vertices;
-    return 5;
+    return 3;
 }
 
 Uint32 _geom_remaining_vertices(EsGeometry* geom) {
@@ -106,10 +212,16 @@ EsGeometry geom_init_geometry() {
 void geom_destroy_geometry(EsGeometry* geom) {
     geom->num_vertices = 0;
     geom->num_faces = 0;
+    geom->num_normals = 0;
+    geom->num_textures = 0;
     geom->vertices_size = 0;
     geom->faces_size = 0;
+    geom->textures_size = 0;
+    geom->normals_size = 0;
     SDL_free(geom->vertices);
     SDL_free(geom->faces);
+    SDL_free(geom->normals);
+    SDL_free(geom->textures);
     return;
 }
 
@@ -241,6 +353,7 @@ SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos,
     float base_angle = SDL_acosf(vec3_dot(y_axis, base_axis));
     for (Uint32 i=0; i<base_num_vertices; i++) {
         vertices[i] = vec3_add(base_pos, rotate_about_origin_axis(vertices[i], base_angle, base_perp_axis));
+        // TODO (01 Dec 2020 sam): Fix normals. This is not correct.
         normals[i] = base_perp_axis;
     }
     tip_axis = vec3_normalize(tip_axis);
@@ -372,6 +485,7 @@ SDL_bool geom_add_cone_origin_zaxis(EsGeometry* geom, float base_radius, float h
 
 SDL_bool geom_save_obj(EsGeometry* geom, const char* filename) {
     SDL_RWops* obj_file;
+    geom_simplify_geometry(geom);
     char* buffer = (char*) SDL_malloc(256 * sizeof(char));
     obj_file = SDL_RWFromFile(filename, "w");
     char* header = "o es_geom\n";

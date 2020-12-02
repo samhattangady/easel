@@ -200,7 +200,6 @@ Uint32 _get_next_leaf(EsTree* tree) {
 }
 
 SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rotation_axis, Uint32 depth, float parent_length, float parent_radius, float offset) {
-    SDL_Log("depth = %i\n", depth);
     Uint32 branch_root = _get_next_cs_id(tree);
     Uint32 root_index = _get_next_root(tree);
     Uint32 num_segments = tree->params.curves_res[depth];
@@ -264,7 +263,6 @@ SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rot
         float branch_end = length;
         vec3 current_rotation = build_vec3(0.0f, 0.0f, 1.0f);
         for (Uint32 i=0; i<num_leaves; i++) {
-            SDL_Log("creating leaves...\n");
             float child_offset_ratio = ((float) i + 0.5f) / (float) num_leaves;
             float child_offset = lerp(branch_start, branch_end, child_offset_ratio);
             vec3 child_pos = _lerp_branch(tree, branch_root, child_offset);

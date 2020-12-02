@@ -10,7 +10,7 @@
 
 #include <stdlib.h>
 
-#define GRASS_INSTANCES 500
+#define GRASS_INSTANCES 1000
 #define GRASS_NUM_VERTICES 4
 #define GRASS_MODEL_PATH "data/obj/grass3.obj"
 #define GRASS_MODEL_TEXTURE_PATH "data/img/grass4.png"
@@ -28,7 +28,7 @@
 // #define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skyfront.png"
 // #define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skydown.png"
 // #define SKYBOX_MODEL_TEXTURE_PATH2 "data/img/skyup.png"
-#define TREE_MODEL_PATH "data/obj/tree.obj"
+#define TREE_MODEL_PATH "data/obj/tree2.obj"
 #define TREE_MODEL_TEXTURE_PATH "data/img/tree.png"
 
 #include "es_painter_helpers.h"
@@ -190,7 +190,7 @@ SDL_bool _painter_load_data(EsPainter* painter) {
 
     painter->uniform_buffer_object.model = identity_mat4();
     painter->camera_fov = 45.0f;
-    painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 100.0f);
+    painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 200.0f);
 
     return SDL_TRUE;
 }
@@ -450,8 +450,8 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     }
 
     painter->uniform_buffer_object.time = (float) (SDL_GetTicks()/1000.0f);
-    vec3 target = build_vec3(0.0f, 0.0f, 0.0f);
-    vec3 base_camera = build_vec3(0.0f, 12.0f, 45.0f);
+    vec3 target = build_vec3(0.0f, 4.0f, 0.0f);
+    vec3 base_camera = build_vec3(0.0f, 14.0f, 35.0f);
     float angle = ((float) M_PI) * SDL_sinf(painter->uniform_buffer_object.time / 5.2f);
     // angle = 0.0f;
     painter->camera_position = rotate_about_origin_yaxis(base_camera, angle);

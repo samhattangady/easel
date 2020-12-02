@@ -53,6 +53,7 @@ extern mat4 mat4_mat4_multiply(mat4 a, mat4 b);
 extern vec4 mat4_vec4_multiply(mat4 a, vec4 b);
 extern void print_mat4(mat4 a);
 extern void print_vec4(vec4 a);
+extern void print_vec3ui(vec3ui a);
 extern mat4 identity_mat4();
 extern mat4 build_mat4(float a1, float a2, float a3, float a4,
                        float b1, float b2, float b3, float b4,

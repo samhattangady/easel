@@ -43,4 +43,5 @@ extern SDL_bool geom_add_cone_origin_zaxis(EsGeometry* geom, float base_radius, 
 extern SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos, vec3 base_axis, float tip_radius, vec3 tip_pos, vec3 tip_axis, vec2 tex, Uint32 lod);
 extern SDL_bool geom_add_oval(EsGeometry* geom, vec3 position, vec3 axis, vec3 normal, float length, float width, vec2 tex, Uint32 lod);
 
+extern SDL_bool geom_simplify_geometry(EsGeometry* geom);
 extern SDL_bool geom_save_obj(EsGeometry* geom, const char* filename);

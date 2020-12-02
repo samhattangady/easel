@@ -1783,7 +1783,7 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     rasterization_state_create_info.polygonMode = VK_POLYGON_MODE_FILL;
     rasterization_state_create_info.cullMode = VK_CULL_MODE_BACK_BIT;
     // rasterization_state_create_info.cullMode = VK_CULL_MODE_FRONT_BIT;
-    // rasterization_state_create_info.cullMode = VK_CULL_MODE_NONE; // nocheckin
+    rasterization_state_create_info.cullMode = VK_CULL_MODE_NONE; // nocheckin
     rasterization_state_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterization_state_create_info.depthBiasEnable = VK_FALSE;
     rasterization_state_create_info.depthBiasConstantFactor = 0.0f;

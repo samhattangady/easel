@@ -60,6 +60,12 @@ void print_vec4(vec4 a) {
     return;
 }
 
+void print_vec3ui(vec3ui a) {
+    SDL_Log("(%i, %i, %i)\n",
+            a.x, a.y, a.z);
+    return;
+}
+
 mat4 identity_mat4() {
     mat4 result;
     result.a.x = 1.0f;    
