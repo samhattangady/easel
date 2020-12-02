@@ -285,7 +285,7 @@ SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rot
     return SDL_TRUE;
 }
 
-EsTree trees_test(const char* objname) {
+extern EsTree trees_gen_test() {
     srand(SDL_GetTicks());
     EsTree tree;
     // Quaking Aspen params
@@ -387,10 +387,12 @@ EsTree trees_test(const char* objname) {
     tree.leaves_size = TREES_DEFAULT_LEAVES;
     tree.leaves = (EsLeaf*) SDL_malloc(tree.leaves_size * sizeof(EsLeaf));
     
-    float time;
-    time = _get_time_in_seconds();
     trees_generate(&tree);
-    SDL_Log("generation took %f seconds\n", _get_time_in_seconds()-time);
+    return tree;
+}
+
+EsTree trees_test(const char* objname) {
+    EsTree tree = trees_gen_test();
     trees_to_obj(&tree, objname);
     return tree;
 }
@@ -400,11 +402,8 @@ SDL_bool trees_generate(EsTree* tree) {
     return SDL_TRUE;
 }
 
-SDL_bool trees_to_obj(EsTree* tree, const char* filename) {
+EsGeometry trees_to_geom(EsTree* tree) {
     EsGeometry geom = geom_init_geometry();
-    float time;
-    time = _get_time_in_seconds();
-    SDL_Log("%i %i %i\n", tree->num_cross_sections, tree->num_roots, tree->num_leaves);
     for (Uint32 i=0; i<tree->num_roots; i++) {
         Uint32 current_cs = tree->roots[i];
         while (SDL_TRUE) {
@@ -420,7 +419,13 @@ SDL_bool trees_to_obj(EsTree* tree, const char* filename) {
         EsLeaf leaf = tree->leaves[i];
         geom_add_oval(&geom, leaf.position, leaf.axis, leaf.normal, leaf.length, leaf.width, build_vec2(1.0, 1.0), 0);
     }
-    SDL_Log("textures = %i\n", geom.num_textures);
+    return geom;
+}
+
+SDL_bool trees_to_obj(EsTree* tree, const char* filename) {
+    float time;
+    time = _get_time_in_seconds();
+    EsGeometry geom = trees_to_geom(tree);
     SDL_Log("meshing took %f seconds\n", _get_time_in_seconds()-time);
     time = _get_time_in_seconds();
     geom_save_obj(&geom, filename);

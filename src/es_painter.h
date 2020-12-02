@@ -5,6 +5,9 @@
 #include "SDL.h"
 #include <vulkan/vulkan.h>
 #include "es_warehouse.h"
+#include "es_geometrygen.h"
+#include "es_trees.h"
+
 
 typedef struct {
     vec3 pos;

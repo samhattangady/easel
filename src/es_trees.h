@@ -3,8 +3,12 @@
  * https://www2.cs.duke.edu/courses/cps124/spring08/assign/07_papers/p119-weber.pdf
  */
 
+#ifndef ES_TREES_DEFINED
+#define ES_TREES_DEFINED
+
 #include "SDL.h"
 #include "es_warehouse.h"
+#include "es_geometrygen.h"
 
 typedef struct {
     float val;
@@ -77,5 +81,9 @@ typedef struct {
 } EsTree;
 
 extern EsTree trees_test(const char* objname);
+extern EsTree trees_gen_test();
 extern SDL_bool trees_generate(EsTree* tree);
+extern EsGeometry trees_to_geom(EsTree* tree);
 extern SDL_bool trees_to_obj(EsTree* tree, const char* filename);
+
+#endif

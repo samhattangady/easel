@@ -2,6 +2,10 @@
  * es_geometrygen is a library to help create geometric shapes and output as obj
  */
 
+#ifndef ES_GEOMETRYGEN_DEFINED
+#define ES_GEOMETRYGEN_DEFINED
+
+
 #include "SDL.h"
 #include "es_warehouse.h"
 #define DEFAULT_NUM_VERTICES 1024
@@ -51,3 +55,5 @@ extern SDL_bool geom_add_oval(EsGeometry* geom, vec3 position, vec3 axis, vec3 n
 
 extern SDL_bool geom_simplify_geometry(EsGeometry* geom);
 extern SDL_bool geom_save_obj(EsGeometry* geom, const char* filename);
+
+#endif

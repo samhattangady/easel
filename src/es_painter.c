@@ -1,5 +1,7 @@
 #include "es_painter.h"
 #include "SDL_vulkan.h"
+#include "es_geometrygen.h"
+#include "es_trees.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -142,51 +144,42 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     tinyobj_shapes_free(shapes, num_shapes);
     tinyobj_materials_free(materials, num_materials);
 
-    ret = tinyobj_parse_obj(&attrib, &shapes, &num_shapes, &materials,
-                            &num_materials, TREE_MODEL_PATH, _painter_read_obj_file, flags);
-    if (ret != TINYOBJ_SUCCESS) {
-        warehouse_error_popup("Error in Setup.", "Could not load model");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    painter->tree_shader->num_vertices = attrib.num_vertices;
+    EsTree tree_raw = trees_gen_test();
+    EsGeometry tree = trees_to_geom(&tree_raw);
+    geom_simplify_geometry(&tree);
+    painter->tree_shader->num_vertices = tree.num_vertices;
     painter->tree_shader->vertices = (EsVertex*) SDL_malloc(painter->tree_shader->num_vertices * sizeof(EsVertex));
-    painter->tree_shader->num_indices = attrib.num_faces;
+    painter->tree_shader->num_indices = tree.num_faces * 3;
     painter->tree_shader->indices = (Uint32*) SDL_malloc(painter->tree_shader->num_indices * sizeof(Uint32));
-    if (num_shapes != 1) {
-        warehouse_error_popup("Error in Setup.", "Currently only support obj with 1 shape");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    for (Uint32 i=0; i<attrib.num_vertices; i++) {
+    for (Uint32 i=0; i<tree.num_vertices; i++) {
         EsVertex vert;
-        vert.pos.x = attrib.vertices[i*3 + 0];
-        vert.pos.y = attrib.vertices[i*3 + 1];
-        vert.pos.z = attrib.vertices[i*3 + 2];
-        // We're loading color field with same data for ease of billboarding
-        vert.color.x = attrib.vertices[i*3 + 0];
-        vert.color.y = attrib.vertices[i*3 + 1];
-        vert.color.z = attrib.vertices[i*3 + 2];
-        // TODO (28 Nov 2020 sam): Load this from the tinyobj parse
-        vert.normal.x = 0.0f;
-        vert.normal.y = 0.0f;
-        vert.normal.z = 1.0f;
-        vert.tex.x = 0.0f;
-        vert.tex.y = 0.0f;
+        vert.pos = tree.vertices[i];
+        vert.color.x = 0.0;
+        vert.color.y = 0.0;
+        vert.color.z = 0.0;
         painter->tree_shader->vertices[i] = vert;
     }
-    for (Uint32 i=0; i<attrib.num_faces; i++) {
-        tinyobj_vertex_index_t face = attrib.faces[i];
-        painter->tree_shader->indices[i] = face.v_idx;
-        painter->tree_shader->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
-        painter->tree_shader->vertices[face.v_idx].tex.y = attrib.texcoords[face.vt_idx*2 + 1];
-        // painter->tree_shader->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
-        // painter->tree_shader->vertices[face.v_idx].tex.y = attrib.texcoords[face.vt_idx*2 + 1];
+    for (Uint32 i=0; i<tree.num_faces; i++) {
+        EsFace face = tree.faces[i];
+        EsVertex vert_x = painter->tree_shader->vertices[face.verts.x];
+        EsVertex vert_y = painter->tree_shader->vertices[face.verts.y];
+        EsVertex vert_z = painter->tree_shader->vertices[face.verts.z];
+        vert_x.tex = tree.textures[face.texs.x];
+        vert_y.tex = tree.textures[face.texs.y];
+        vert_z.tex = tree.textures[face.texs.z];
+        vert_x.normal = tree.normals[face.norms.x];
+        vert_y.normal = tree.normals[face.norms.y];
+        vert_z.normal = tree.normals[face.norms.z];
+        // vert_x.color = tree.colors[face.cols.x];
+        // vert_y.color = tree.colors[face.cols.y];
+        // vert_z.color = tree.colors[face.cols.z];
+        painter->tree_shader->vertices[face.verts.x] = vert_x;
+        painter->tree_shader->vertices[face.verts.y] = vert_y;
+        painter->tree_shader->vertices[face.verts.z] = vert_z;
+        painter->tree_shader->indices[i*3 + 0] = face.verts.x;
+        painter->tree_shader->indices[i*3 + 1] = face.verts.y;
+        painter->tree_shader->indices[i*3 + 2] = face.verts.z;
     }
-    // SDL_Log("perlin: %f", stb_perlin_noise3(0.01, 0.2, 2.1, 0, 0, 0));
-    tinyobj_attrib_free(&attrib);
-    tinyobj_shapes_free(shapes, num_shapes);
-    tinyobj_materials_free(materials, num_materials);
 
     painter->uniform_buffer_object.model = identity_mat4();
     painter->camera_fov = 45.0f;
@@ -418,6 +411,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         vkCmdBindIndexBuffer(painter->command_buffers[i], painter->skybox_shader->index_buffer, 0, VK_INDEX_TYPE_UINT32);
         vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->skybox_shader->pipeline_layout, 0, 1, &painter->skybox_shader->descriptor_sets[i], 0, NULL);
         vkCmdDrawIndexed(painter->command_buffers[i], painter->skybox_shader->num_indices, 1, 0, 0, 0);
+
         vkCmdEndRenderPass(painter->command_buffers[i]);
         result = vkEndCommandBuffer(painter->command_buffers[i]);
         if (result != VK_SUCCESS) {
