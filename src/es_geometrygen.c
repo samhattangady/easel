@@ -234,8 +234,9 @@ EsGeometry geom_init_geometry() {
 void geom_destroy_geometry(EsGeometry* geom) {
     geom->num_vertices = 0;
     geom->num_faces = 0;
-    geom->num_normals = 0;
     geom->num_textures = 0;
+    geom->num_normals = 0;
+    geom->num_colors = 0;
     geom->vertices_size = 0;
     geom->faces_size = 0;
     geom->textures_size = 0;
