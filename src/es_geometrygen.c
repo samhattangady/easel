@@ -34,12 +34,15 @@ SDL_bool geom_simplify_geometry(EsGeometry* geom) {
     int vertex_index = 0;
     int texture_index = 0;
     int normal_index = 0;
+    int color_index = 0;
     Vec3Map* vertices = NULL;
     Vec2Map* textures = NULL;
     Vec3Map* normals = NULL;
+    Vec3Map* colors = NULL;
     hmdefault(vertices, -1);
     hmdefault(textures, -1);
     hmdefault(normals, -1);
+    hmdefault(colors, -1);
     for (Uint32 i=0; i<geom->num_vertices; i++) {
         vec3 vert = geom->vertices[i];
         if (hmget(vertices, vert) < 0) {
@@ -64,32 +67,28 @@ SDL_bool geom_simplify_geometry(EsGeometry* geom) {
         }
     }
     SDL_Log("total normals = %i, unique normals = %i\n", geom->num_normals, normal_index);
-    EsGeometry simple = geom_init_geometry_size(vertex_index, geom->num_faces, texture_index, normal_index);
+    for (Uint32 i=0; i<geom->num_colors; i++) {
+        vec3 col = geom->colors[i];
+        if (hmget(colors, col) < 0) {
+            hmput(colors, col, color_index);
+            color_index++;
+        }
+    }
+    SDL_Log("total colors = %i, unique colors = %i\n", geom->num_colors, color_index);
+    EsGeometry simple = geom_init_geometry_size(vertex_index, geom->num_faces, texture_index, normal_index, color_index);
     for (Uint32 i=0; i<geom->num_vertices; i++)
         simple.vertices[hmget(vertices, geom->vertices[i])] = geom->vertices[i];
     for (Uint32 i=0; i<geom->num_textures; i++)
         simple.textures[hmget(textures, geom->textures[i])] = geom->textures[i];
     for (Uint32 i=0; i<geom->num_normals; i++)
         simple.normals[hmget(normals, geom->normals[i])] = geom->normals[i];
+    for (Uint32 i=0; i<geom->num_colors; i++)
+        simple.colors[hmget(colors, geom->colors[i])] = geom->colors[i];
     for (Uint32 i=0; i<geom->num_faces; i++) {
         vec3ui verts_old = geom->faces[i].verts;
         vec3ui texs_old = geom->faces[i].texs;
         vec3ui norms_old = geom->faces[i].norms;
-        // vec3ui verts_new = build_vec3ui(hmget(vertices, geom->vertices[verts_old.x]),
-        //                                 hmget(vertices, geom->vertices[verts_old.y]),
-        //                                 hmget(vertices, geom->vertices[verts_old.z]));
-        // vec3ui texs_new = build_vec3ui(hmget(textures, geom->textures[texs_old.x]),
-        //                                hmget(textures, geom->textures[texs_old.y]),
-        //                                hmget(textures, geom->textures[texs_old.z]));
-        // vec3ui norms_new = build_vec3ui(hmget(normals, geom->normals[norms_old.x]),
-        //                                 hmget(normals, geom->normals[norms_old.y]),
-        //                                 hmget(normals, geom->normals[norms_old.z]));
-        // SDL_Log("Face %i verts (%i, %i, %i) -> (%i, %i, %i)\n", i,
-        //         verts_old.x, verts_old.y, verts_old.z,
-        //         verts_new.x, verts_new.y, verts_new.z);
-        // geom->faces[i].verts = verts_new;
-        // geom->faces[i].texs = texs_new;
-        // geom->faces[i].norms = norms_new;
+        vec3ui cols_old = geom->faces[i].cols;
         geom->faces[i].verts.x = hmget(vertices, geom->vertices[verts_old.x]);
         geom->faces[i].verts.y = hmget(vertices, geom->vertices[verts_old.y]);
         geom->faces[i].verts.z = hmget(vertices, geom->vertices[verts_old.z]);
@@ -99,19 +98,30 @@ SDL_bool geom_simplify_geometry(EsGeometry* geom) {
         geom->faces[i].norms.x = hmget(normals, geom->normals[norms_old.x]);
         geom->faces[i].norms.y = hmget(normals, geom->normals[norms_old.y]);
         geom->faces[i].norms.z = hmget(normals, geom->normals[norms_old.z]);
+        geom->faces[i].cols.x = hmget(colors, geom->colors[cols_old.x]);
+        geom->faces[i].cols.y = hmget(colors, geom->colors[cols_old.y]);
+        geom->faces[i].cols.z = hmget(colors, geom->colors[cols_old.z]);
     }
+    hmfree(vertices);
+    hmfree(textures);
+    hmfree(normals);
+    hmfree(colors);
     SDL_free(geom->vertices);
     SDL_free(geom->textures);
     SDL_free(geom->normals);
+    SDL_free(geom->colors);
     geom->vertices = simple.vertices;
     geom->textures = simple.textures;
     geom->normals = simple.normals;
+    geom->colors = simple.colors;
     geom->num_vertices = vertex_index;
     geom->num_textures = texture_index;
     geom->num_normals = normal_index;
+    geom->num_colors = color_index;
     geom->vertices_size = vertex_index;
     geom->textures_size = texture_index;
     geom->normals_size = normal_index;
+    geom->colors_size = color_index;
     return SDL_TRUE;
 }
 
@@ -152,20 +162,23 @@ Uint32 _geom_remaining_normals(EsGeometry* geom) {
     return geom->normals_size - geom->num_normals;
 }
 
-EsGeometry geom_init_geometry_size(Uint32 vertices_size, Uint32 faces_size, Uint32 textures_size, Uint32 normals_size) {
+EsGeometry geom_init_geometry_size(Uint32 vertices_size, Uint32 faces_size, Uint32 textures_size, Uint32 normals_size, Uint32 colors_size) {
     EsGeometry geom;
     geom.num_vertices = 0;
     geom.num_faces = 0;
     geom.num_textures = 0;
     geom.num_normals = 0;
+    geom.num_colors = 0;
     geom.vertices_size = vertices_size;
     geom.faces_size = faces_size;
     geom.textures_size = textures_size;
     geom.normals_size = normals_size;
+    geom.colors_size = colors_size;
     geom.vertices = (vec3*) SDL_malloc(geom.vertices_size * sizeof(vec3));
     geom.faces = (EsFace*) SDL_malloc(geom.faces_size * sizeof(EsFace));
     geom.textures = (vec2*) SDL_malloc(geom.textures_size * sizeof(vec2));
     geom.normals = (vec3*) SDL_malloc(geom.normals_size * sizeof(vec3));
+    geom.colors = (vec3*) SDL_malloc(geom.colors_size * sizeof(vec3));
     return geom;
 }
 
@@ -184,6 +197,15 @@ SDL_bool geom_add_normals_memory(EsGeometry* geom, Uint32 normals_size) {
         return SDL_FALSE;
     geom->normals = new_normals;
     geom->normals_size += normals_size;
+    return SDL_TRUE;
+}
+
+SDL_bool geom_add_colors_memory(EsGeometry* geom, Uint32 colors_size) {
+    vec3* new_colors = (vec3*) SDL_realloc(geom->colors, (geom->colors_size+colors_size) * sizeof(vec3));
+    if (new_colors == NULL)
+        return SDL_FALSE;
+    geom->colors = new_colors;
+    geom->colors_size += colors_size;
     return SDL_TRUE;
 }
 
@@ -206,7 +228,7 @@ SDL_bool geom_add_textures_memory(EsGeometry* geom, Uint32 textures_size) {
 }
 
 EsGeometry geom_init_geometry() {
-    return geom_init_geometry_size(DEFAULT_NUM_VERTICES, DEFAULT_NUM_INDICES, DEFAULT_NUM_TEXTURES, DEFAULT_NUM_NORMALS);
+    return geom_init_geometry_size(DEFAULT_NUM_VERTICES, DEFAULT_NUM_INDICES, DEFAULT_NUM_TEXTURES, DEFAULT_NUM_NORMALS, DEFAULT_NUM_COLORS);
 }
 
 void geom_destroy_geometry(EsGeometry* geom) {
@@ -218,10 +240,12 @@ void geom_destroy_geometry(EsGeometry* geom) {
     geom->faces_size = 0;
     geom->textures_size = 0;
     geom->normals_size = 0;
+    geom->colors_size = 0;
     SDL_free(geom->vertices);
     SDL_free(geom->faces);
-    SDL_free(geom->normals);
     SDL_free(geom->textures);
+    SDL_free(geom->normals);
+    SDL_free(geom->colors);
     return;
 }
 

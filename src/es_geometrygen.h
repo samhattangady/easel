@@ -8,11 +8,13 @@
 #define DEFAULT_NUM_INDICES 256
 #define DEFAULT_NUM_TEXTURES 128
 #define DEFAULT_NUM_NORMALS 128
+#define DEFAULT_NUM_COLORS 128
 
 typedef struct {
     vec3ui verts;
     vec3ui texs;
     vec3ui norms;
+    vec3ui cols;
 } EsFace;
 
 typedef struct {
@@ -20,22 +22,26 @@ typedef struct {
     Uint32 num_faces;
     Uint32 num_textures;
     Uint32 num_normals;
+    Uint32 num_colors;
     Uint32 vertices_size;
     Uint32 faces_size;
     Uint32 textures_size;
     Uint32 normals_size;
+    Uint32 colors_size;
     vec3* vertices;
     EsFace* faces;
     vec2* textures;
     vec3* normals;
+    vec3* colors;
 } EsGeometry;
 
 extern EsGeometry geom_init_geometry();
-extern EsGeometry geom_init_geometry_size(Uint32 vertices_size, Uint32 faces_size, Uint32 textures_size, Uint32 normals_size);
+extern EsGeometry geom_init_geometry_size(Uint32 vertices_size, Uint32 faces_size, Uint32 textures_size, Uint32 normals_size, Uint32 colors_size);
 extern SDL_bool geom_add_vertices_memory(EsGeometry* geom, Uint32 vertices_size);
 extern SDL_bool geom_add_faces_memory(EsGeometry* geom, Uint32 faces_size);
 extern SDL_bool geom_add_textures_memory(EsGeometry* geom, Uint32 textures_size);
 extern SDL_bool geom_add_normals_memory(EsGeometry* geom, Uint32 normals_size);
+extern SDL_bool geom_add_colors_memory(EsGeometry* geom, Uint32 colors_size);
 extern void geom_destroy_geometry(EsGeometry* geom);
 
 extern SDL_bool geom_add_cone(EsGeometry* geom, vec3 root, vec3 axis, float base_radius, float height, SDL_bool close, Uint32 lod);
