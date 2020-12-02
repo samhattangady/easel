@@ -378,15 +378,14 @@ SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos,
     float base_angle = SDL_acosf(vec3_dot(y_axis, base_axis));
     for (Uint32 i=0; i<base_num_vertices; i++) {
         vertices[i] = vec3_add(base_pos, rotate_about_origin_axis(vertices[i], base_angle, base_perp_axis));
-        // TODO (01 Dec 2020 sam): Fix normals. This is not correct.
-        normals[i] = base_perp_axis;
+        normals[i] = vec3_normalize(vec3_sub(vertices[i], base_pos));
     }
     tip_axis = vec3_normalize(tip_axis);
     vec3 tip_perp_axis = vec3_cross(y_axis, tip_axis);
     float tip_angle = SDL_acosf(vec3_dot(y_axis, tip_axis));
     for (Uint32 i=0; i<base_num_vertices; i++) {
         vertices[i+base_num_vertices] = vec3_add(tip_pos, rotate_about_origin_axis(vertices[i+base_num_vertices], tip_angle, tip_perp_axis));
-        normals[i+base_num_vertices] = tip_perp_axis;
+        normals[i+base_num_vertices] = vec3_normalize(vec3_sub(vertices[i+base_num_vertices], tip_pos));
     }
     textures[0] = tex;
     for (Uint32 i=0; i<base_num_vertices-1; i++) {
