@@ -12,11 +12,11 @@
 
 #include <stdlib.h>
 
-#define GRASS_INSTANCES 1000
+#define GRASS_INSTANCES 4000
 #define GRASS_NUM_VERTICES 4
 #define GRASS_MODEL_PATH "data/obj/grass3.obj"
 #define GRASS_MODEL_TEXTURE_PATH "data/img/grass4.png"
-#define GRASS_RADIUS 7.0f
+#define GRASS_RADIUS 10.0f
 #define SKYBOX_MODEL_PATH "data/obj/skybox.obj"
 #define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skybox/front.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skybox/back.jpg"
@@ -24,13 +24,7 @@
 #define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skybox/bottom.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skybox/left.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skybox/right.jpg"
-// #define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skyfront.png"
-// #define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skyfront.png"
-// #define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skyfront.png"
-// #define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skyfront.png"
-// #define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skydown.png"
-// #define SKYBOX_MODEL_TEXTURE_PATH2 "data/img/skyup.png"
-#define TREE_MODEL_PATH "data/obj/tree2.obj"
+#define TREE_INSTANCES 4
 #define TREE_MODEL_TEXTURE_PATH "data/img/tree.png"
 
 #include "es_painter_helpers.h"
@@ -144,8 +138,19 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     tinyobj_shapes_free(shapes, num_shapes);
     tinyobj_materials_free(materials, num_materials);
 
-    EsTree tree_raw = trees_gen_test();
-    EsGeometry tree = trees_to_geom(&tree_raw);
+    EsGeometry tree = geom_init_geometry_size(300000, 700000, 2, 300000, 0);
+    for (Uint32 i=0; i<TREE_INSTANCES; i++) {
+        float x = (((float) rand() / (float) RAND_MAX) - 0.5f) * GRASS_RADIUS*2.0f;
+        float z = (((float) rand() / (float) RAND_MAX) - 0.5f) * GRASS_RADIUS*2.0f;
+        if (vec3_magnitude(build_vec3(x,0,z)) > GRASS_RADIUS/2.0f) {
+            i--;
+            continue;
+        }
+        float y = 1.0 * stb_perlin_noise3(x/10.0f, 0, z/10.0f, 0, 0, 0);
+        vec3 pos = build_vec3(x, y, z);
+        EsTree tree_raw = trees_gen_test();
+        trees_add_to_geom_at_pos(&tree_raw, &tree, pos);
+    }
     geom_simplify_geometry(&tree);
     painter->tree_shader->num_vertices = tree.num_vertices;
     painter->tree_shader->vertices = (EsVertex*) SDL_malloc(painter->tree_shader->num_vertices * sizeof(EsVertex));

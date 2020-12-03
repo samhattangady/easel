@@ -293,7 +293,7 @@ extern EsTree trees_gen_test() {
     tree.params.shape = 7;
     tree.params.base_size = 0.4f;
     tree.params.scale.val = 13;
-    tree.params.scale.val_v = 3;
+    tree.params.scale.val_v = 8;
     tree.params.levels = 3;
     tree.params.ratio = 0.015f;
     tree.params.ratio_power = 1.2f;
@@ -402,8 +402,7 @@ SDL_bool trees_generate(EsTree* tree) {
     return SDL_TRUE;
 }
 
-EsGeometry trees_to_geom(EsTree* tree) {
-    EsGeometry geom = geom_init_geometry();
+SDL_bool trees_add_to_geom_at_pos(EsTree* tree, EsGeometry* geom, vec3 pos) {
     for (Uint32 i=0; i<tree->num_roots; i++) {
         Uint32 current_cs = tree->roots[i];
         while (SDL_TRUE) {
@@ -411,14 +410,24 @@ EsGeometry trees_to_geom(EsTree* tree) {
                 break;
             EsCrossSection base = tree->cross_sections[current_cs];
             EsCrossSection tip = tree->cross_sections[base.children[0]];
-            geom_add_cs_surface(&geom, base.radius, base.position, base.axis, tip.radius, tip.position, tip.axis, build_vec2(0.0, 0.0), 0);
+            geom_add_cs_surface(geom, base.radius, vec3_add(pos, base.position), base.axis, tip.radius, vec3_add(pos, tip.position), tip.axis, build_vec2(0.0, 0.0), 0);
             current_cs = base.children[0];
         }
     }
     for (Uint32 i=0; i<tree->num_leaves; i++) {
         EsLeaf leaf = tree->leaves[i];
-        geom_add_oval(&geom, leaf.position, leaf.axis, leaf.normal, leaf.length, leaf.width, build_vec2(1.0, 1.0), 0);
+        geom_add_oval(geom, vec3_add(pos, leaf.position), leaf.axis, leaf.normal, leaf.length, leaf.width, build_vec2(1.0, 1.0), 0);
     }
+    return SDL_TRUE;    
+}
+
+SDL_bool trees_add_to_geom(EsTree* tree, EsGeometry* geom) {
+    return trees_add_to_geom_at_pos(tree, geom, build_vec3(0, 0, 0));
+}
+
+EsGeometry trees_to_geom(EsTree* tree) {
+    EsGeometry geom = geom_init_geometry();
+    trees_add_to_geom(tree, &geom);
     return geom;
 }
 

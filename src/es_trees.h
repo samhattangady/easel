@@ -84,6 +84,8 @@ extern EsTree trees_test(const char* objname);
 extern EsTree trees_gen_test();
 extern SDL_bool trees_generate(EsTree* tree);
 extern EsGeometry trees_to_geom(EsTree* tree);
+extern SDL_bool trees_add_to_geom_at_pos(EsTree* tree, EsGeometry* geom, vec3 pos);
+extern SDL_bool trees_add_to_geom(EsTree* tree, EsGeometry* geom);
 extern SDL_bool trees_to_obj(EsTree* tree, const char* filename);
 
 #endif
