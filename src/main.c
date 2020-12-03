@@ -2,6 +2,7 @@
 #include "SDL_vulkan.h"
 #include <vulkan/vulkan.h>
 #include "es_painter.h"
+#include "es_world.h"
 #include "es_warehouse.h"
 
 int main(int argc, char** argv) {
@@ -11,9 +12,12 @@ int main(int argc, char** argv) {
     SDL_bool run_app = SDL_TRUE;
 
     EsPainter painter;
+    EsWorld world;
     result = painter_initialise(&painter);
     if (!result)
         return -1;
+    world_init(&world);
+    painter.world = &world;
 
     SDL_Log("Running Event Loop\n");
     SDL_Event e;

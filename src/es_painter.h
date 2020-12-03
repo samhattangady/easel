@@ -2,12 +2,15 @@
  * es_painter is the rendering system for easel.
  */
 
+#ifndef ES_PAINTER_DEFINED
+#define ES_PAINTER_DEFINED
+
 #include "SDL.h"
 #include <vulkan/vulkan.h>
 #include "es_warehouse.h"
 #include "es_geometrygen.h"
 #include "es_trees.h"
-
+#include "es_world.h"
 
 typedef struct {
     vec3 pos;
@@ -99,9 +102,12 @@ typedef struct {
     ShaderData* skybox_shader;
     Uint32 num_shaders;
     ShaderData* shaders;
+    EsWorld* world;
 } EsPainter;
 
 extern SDL_bool painter_initialise(EsPainter* painter);
 extern SDL_bool painter_paint_frame(EsPainter* painter);
 extern void painter_cleanup(EsPainter* painter);
 extern Sint64 painter_read_shader_file(const char* filename, Uint32** buffer);
+
+#endif

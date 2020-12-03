@@ -24,7 +24,7 @@
 #define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skybox/bottom.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skybox/left.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skybox/right.jpg"
-#define TREE_INSTANCES 4
+#define TREE_INSTANCES 2
 #define TREE_MODEL_TEXTURE_PATH "data/img/tree.png"
 #define GROUND_MODEL_TEXTURE_PATH "data/img/ground.png"
 #define GROUND_NUM_VERTICES_SIDE 30
@@ -222,7 +222,7 @@ SDL_bool _painter_load_data(EsPainter* painter) {
             z -= GRASS_RADIUS*1.5f;
             Uint32 index = i*(GROUND_NUM_VERTICES_SIDE+1) + j;
             float y = 1.0f * stb_perlin_noise3(x/10.0f, 0, z/10.0f, 0, 0, 0);
-            y -= 0.3;
+            y -= 0.3f;
             ground_shader.vertices[index].pos = build_vec3(x, y, z);
             ground_shader.vertices[index].color = build_vec3(0, 0, 0);
             ground_shader.vertices[index].tex = build_vec2(tex_x, tex_y);
@@ -406,13 +406,10 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     }
 
     painter->uniform_buffer_object.time = (float) (SDL_GetTicks()/1000.0f);
-    vec3 target = build_vec3(0.0f, 4.0f, 0.0f);
-    vec3 base_camera = build_vec3(0.0f, 14.0f, 35.0f);
-    float angle = ((float) M_PI) * SDL_sinf(painter->uniform_buffer_object.time / 5.2f);
-    // angle = 0.0f;
-    painter->camera_position = rotate_about_origin_yaxis(base_camera, angle);
+    vec3 target = painter->world->target;
+    painter->camera_position = painter->world->position;
     painter->uniform_buffer_object.camera_position = painter->camera_position;
-    painter->uniform_buffer_object.view = look_at_y(painter->camera_position, target);
+    painter->uniform_buffer_object.view = look_at(painter->camera_position, target, painter->world->up_axis);
 
     void* uniform_data;
     result = vkMapMemory(painter->device, painter->uniform_buffers_memory[image_index], 0, painter->uniform_buffer_size, 0, &uniform_data);
