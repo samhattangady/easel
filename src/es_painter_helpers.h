@@ -1657,6 +1657,7 @@ SDL_bool _painter_load_shaders(EsPainter* painter, ShaderData* shader) {
     fragment_shader_module_create_info.flags = 0;
     fragment_shader_module_create_info.codeSize = fragment_shader_length;
     fragment_shader_module_create_info.pCode = fragment_spirv;
+    SDL_Log("Creating shader %s\n", shader->shader_name);
     result = vkCreateShaderModule(painter->device, &fragment_shader_module_create_info, NULL, &shader->fragment_shader_module);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create fragment shader module.");

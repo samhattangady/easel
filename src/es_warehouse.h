@@ -77,6 +77,7 @@ extern mat4 rotation_matrix_xaxis(float angle);
 extern mat4 rotation_matrix_yaxis(float angle);
 extern mat4 rotation_matrix_zaxis(float angle);
 extern vec3 rotate_about_origin_axis(vec3 point, float angle, vec3 axis);
+extern vec3 rotate_about_anchor_axis(vec3 point, vec3 anchor, float angle, vec3 axis);
 extern vec3 rotate_about_origin_xaxis(vec3 point, float angle);
 extern vec3 rotate_about_origin_yaxis(vec3 point, float angle);
 extern vec3 rotate_about_origin_zaxis(vec3 point, float angle);

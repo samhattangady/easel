@@ -24,7 +24,7 @@
 #define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skybox/bottom.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skybox/left.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skybox/right.jpg"
-#define TREE_INSTANCES 2
+#define TREE_INSTANCES 20
 #define TREE_MODEL_TEXTURE_PATH "data/img/tree.png"
 #define GROUND_MODEL_TEXTURE_PATH "data/img/ground.png"
 #define GROUND_NUM_VERTICES_SIDE 30
@@ -49,18 +49,18 @@ SDL_bool _painter_load_data(EsPainter* painter) {
 
     grass_shader.shader_name = "Grass Shader";
     grass_shader.vertex_shader = "data/spirv/grass_vertex.spv";
-    grass_shader.fragment_shader = "data/spirv/grass_fragment.spv";
+    grass_shader.fragment_shader = "data/spirv/fragment.spv";
     grass_shader.texture_filepath = GRASS_MODEL_TEXTURE_PATH;
     tree_shader.shader_name = "Tree Shader";
     tree_shader.vertex_shader = "data/spirv/tree_vertex.spv";
-    tree_shader.fragment_shader = "data/spirv/tree_fragment.spv";
+    tree_shader.fragment_shader = "data/spirv/fragment.spv";
     tree_shader.texture_filepath = TREE_MODEL_TEXTURE_PATH;
     ground_shader.shader_name = "Ground Shader";
-    ground_shader.vertex_shader = "data/spirv/tree_vertex.spv";
-    ground_shader.fragment_shader = "data/spirv/tree_fragment.spv";
+    ground_shader.vertex_shader = "data/spirv/vertex.spv";
+    ground_shader.fragment_shader = "data/spirv/fragment.spv";
     ground_shader.texture_filepath = GROUND_MODEL_TEXTURE_PATH;
     painter->skybox_shader->shader_name = "Skybox Shader";
-    painter->skybox_shader->vertex_shader = "data/spirv/skybox_vertex.spv";
+    painter->skybox_shader->vertex_shader = "data/spirv/vertex.spv";
     painter->skybox_shader->fragment_shader = "data/spirv/skybox_fragment.spv";
 
     ret = tinyobj_parse_obj(&attrib, &shapes, &num_shapes, &materials,

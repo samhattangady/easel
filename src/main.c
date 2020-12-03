@@ -20,22 +20,26 @@ int main(int argc, char** argv) {
     painter.world = &world;
 
     SDL_Log("Running Event Loop\n");
-    SDL_Event e;
-    while (run_app) {
-        SDL_PollEvent(&e);
-        if (e.type == SDL_QUIT) {
-            SDL_Log("Program quit after %i ticks", e.quit.timestamp);
-            break;
-        } else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED || e.window.event == SDL_WINDOWEVENT_MINIMIZED) {
-            SDL_Log("Window is resized\n");
-            painter.buffer_resized = SDL_TRUE;
+    SDL_Event event;
+    while (world.running) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) {
+                world.running = SDL_FALSE;
+            } else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED || event.window.event == SDL_WINDOWEVENT_MINIMIZED) {
+                SDL_Log("Window is resized\n");
+                painter.buffer_resized = SDL_TRUE;
+            } else {
+                world_process_input_event(&world, event);
+            }
         }
         result = world_update(&world);
         result = painter_paint_frame(&painter);
         if (!result)
             return -2;
+        result = world_flush_inputs(&world);
     }
-    
+
+    SDL_Log("Program quit after %i ticks", event.quit.timestamp);
     painter_cleanup(&painter);
     SDL_Log("Quitting Easel\n");
     return 0;

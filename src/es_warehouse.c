@@ -252,6 +252,13 @@ vec3 rotate_about_origin_axis(vec3 point, float angle, vec3 axis) {
     return build_vec3(rotated.x, rotated.y, rotated.z);
 }
 
+vec3 rotate_about_anchor_axis(vec3 point, vec3 anchor, float angle, vec3 axis) {
+    point = vec3_sub(point, anchor);
+    point = rotate_about_origin_axis(point, angle, axis);
+    point = vec3_add(point, anchor);
+    return point;
+}
+
 vec3 rotate_about_origin_xaxis(vec3 point, float angle) {
     return rotate_about_origin_axis(point, angle, build_vec3(1.0f, 0.0f, 0.0f));
 }
