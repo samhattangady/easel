@@ -26,6 +26,8 @@
 #define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skybox/right.jpg"
 #define TREE_INSTANCES 4
 #define TREE_MODEL_TEXTURE_PATH "data/img/tree.png"
+#define GROUND_MODEL_TEXTURE_PATH "data/img/ground.png"
+#define GROUND_NUM_VERTICES_SIDE 30
 
 #include "es_painter_helpers.h"
 
@@ -43,6 +45,7 @@ SDL_bool _painter_load_data(EsPainter* painter) {
 
     ShaderData tree_shader = painter->shaders[0];
     ShaderData grass_shader = painter->shaders[1];
+    ShaderData ground_shader = painter->shaders[2];
 
     grass_shader.shader_name = "Grass Shader";
     grass_shader.vertex_shader = "data/spirv/grass_vertex.spv";
@@ -52,6 +55,10 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     tree_shader.vertex_shader = "data/spirv/tree_vertex.spv";
     tree_shader.fragment_shader = "data/spirv/tree_fragment.spv";
     tree_shader.texture_filepath = TREE_MODEL_TEXTURE_PATH;
+    ground_shader.shader_name = "Ground Shader";
+    ground_shader.vertex_shader = "data/spirv/tree_vertex.spv";
+    ground_shader.fragment_shader = "data/spirv/tree_fragment.spv";
+    ground_shader.texture_filepath = GROUND_MODEL_TEXTURE_PATH;
     painter->skybox_shader->shader_name = "Skybox Shader";
     painter->skybox_shader->vertex_shader = "data/spirv/skybox_vertex.spv";
     painter->skybox_shader->fragment_shader = "data/spirv/skybox_fragment.spv";
@@ -201,8 +208,54 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         tree_shader.indices[i*3 + 2] = face.verts.z;
     }
 
+    ground_shader.num_vertices = (GROUND_NUM_VERTICES_SIDE+1) * (GROUND_NUM_VERTICES_SIDE+1);
+    ground_shader.vertices = (EsVertex*) SDL_malloc(ground_shader.num_vertices * sizeof(EsVertex));
+    ground_shader.num_indices = ground_shader.num_vertices * 6;
+    ground_shader.indices = (Uint32*) SDL_calloc(ground_shader.num_indices, sizeof(Uint32));
+    float tex_x = 0.0;
+    float tex_y = 0.0;
+    for (Uint32 i=0; i<GROUND_NUM_VERTICES_SIDE+1; i++) {
+        float x = 3.0f * GRASS_RADIUS * ((float) i) / ((float) GROUND_NUM_VERTICES_SIDE);
+        x -= GRASS_RADIUS*1.5f;
+        for (Uint32 j=0; j<GROUND_NUM_VERTICES_SIDE+1; j++) {
+            float z = 3.0f * GRASS_RADIUS * ((float) j) / ((float) GROUND_NUM_VERTICES_SIDE);
+            z -= GRASS_RADIUS*1.5f;
+            Uint32 index = i*(GROUND_NUM_VERTICES_SIDE+1) + j;
+            float y = 1.0f * stb_perlin_noise3(x/10.0f, 0, z/10.0f, 0, 0, 0);
+            y -= 0.3;
+            ground_shader.vertices[index].pos = build_vec3(x, y, z);
+            ground_shader.vertices[index].color = build_vec3(0, 0, 0);
+            ground_shader.vertices[index].tex = build_vec2(tex_x, tex_y);
+            ground_shader.vertices[index].normal = build_vec3(0, 1, 0);
+            if (tex_y == 1.0)
+                tex_y = 0.0;
+            else
+                tex_y = 1.0;
+        }
+        if (tex_x == 1.0)
+            tex_x = 0.0;
+        else
+            tex_x = 1.0;
+    }
+    for (Uint32 i=0; i<GROUND_NUM_VERTICES_SIDE; i++) {
+        for (Uint32 j=0; j<GROUND_NUM_VERTICES_SIDE; j++) {
+            Uint32 index = 6 * (i*(GROUND_NUM_VERTICES_SIDE+1) + j);
+            Uint32 v1 = (i+0)*(GROUND_NUM_VERTICES_SIDE+1) + (j+0);
+            Uint32 v2 = (i+0)*(GROUND_NUM_VERTICES_SIDE+1) + (j+1);
+            Uint32 v3 = (i+1)*(GROUND_NUM_VERTICES_SIDE+1) + (j+1);
+            Uint32 v4 = (i+1)*(GROUND_NUM_VERTICES_SIDE+1) + (j+0);
+            ground_shader.indices[index+0] = v2;
+            ground_shader.indices[index+1] = v4;
+            ground_shader.indices[index+2] = v1;
+            ground_shader.indices[index+3] = v2;
+            ground_shader.indices[index+4] = v3;
+            ground_shader.indices[index+5] = v4;
+        }
+    }
+
     painter->shaders[0] = tree_shader;
     painter->shaders[1] = grass_shader;
+    painter->shaders[2] = ground_shader;
 
     painter->uniform_buffer_object.model = identity_mat4();
     painter->camera_fov = 45.0f;
@@ -216,7 +269,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
 
     sdl_result = _painter_initialise_sdl_window(painter, "Easel");
     if (!sdl_result) return SDL_FALSE;
-    painter->num_shaders = 2;
+    painter->num_shaders = 3;
     painter->skybox_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
     painter->shaders = (ShaderData*) SDL_malloc(painter->num_shaders * sizeof(ShaderData));
     sdl_result = _painter_load_data(painter);
