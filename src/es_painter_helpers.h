@@ -16,7 +16,7 @@ extern SDL_bool _painter_init_instance(EsPainter* painter);
 extern SDL_bool _painter_select_physical_device(EsPainter* painter);
 extern SDL_bool _painter_create_synchronisation_elements(EsPainter* painter);
 extern SDL_bool _painter_create_device_and_queues(EsPainter* painter);
-extern SDL_bool _painter_load_shaders(EsPainter* painter, ShaderData* shader, const char* vertex_spirv_file, const char* fragment_spirv_file);
+extern SDL_bool _painter_load_shaders(EsPainter* painter, ShaderData* shader);
 extern SDL_bool _painter_create_descriptor_set_layout(EsPainter* painter, ShaderData* shader);
 extern SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader);
 extern SDL_bool _painter_load_buffer_via_staging(EsPainter* painter, void* data, VkDeviceMemory* memory, VkBuffer* src, VkBuffer* dst, Uint32 size);
@@ -28,6 +28,7 @@ extern SDL_bool _painter_load_image_and_sampler(EsPainter* painter, const char* 
 extern SDL_bool _painter_load_cubemap_and_sampler(EsPainter* painter, const char* filepath0, const char* filepath1, const char* filepath2, const char* filepath3, const char* filepath4, const char* filepath5, ShaderData* shader);
 extern SDL_bool _painter_create_framebuffers(EsPainter* painter);
 extern SDL_bool _painter_create_descriptor_sets(EsPainter* painter, ShaderData* shader);
+extern SDL_bool _painter_init_shader_data(EsPainter* painter, ShaderData* shader, SDL_bool is_skybox);
 SDL_bool _painter_create_swapchain(EsPainter* painter);
 
 SDL_bool _painter_create_framebuffers(EsPainter* painter) {
@@ -1074,9 +1075,10 @@ SDL_bool _painter_load_buffer_via_staging(EsPainter* painter, void* data, VkDevi
 void _painter_cleanup_swapchain(EsPainter* painter) {
     vkQueueWaitIdle(painter->presentation_queue);
     vkDeviceWaitIdle(painter->device);
-    _painter_shader_cleanup(painter, painter->grass_shader);
     _painter_shader_cleanup(painter, painter->skybox_shader);
-    _painter_shader_cleanup(painter, painter->tree_shader);
+    for (Uint32 i=0; i<painter->num_shaders; i++) {
+        _painter_shader_cleanup(painter, &painter->shaders[i]);
+    }
     if (painter->swapchain_framebuffers) {
         for (Uint32 i=0; i<painter->swapchain_image_count; i++)
             vkDestroyFramebuffer(painter->device, painter->swapchain_framebuffers[i], NULL);
@@ -1618,12 +1620,12 @@ SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat 
     return SDL_TRUE;
 }
 
-SDL_bool _painter_load_shaders(EsPainter* painter, ShaderData* shader, const char* vertex_spirv_file, const char* fragment_spirv_file) {
+SDL_bool _painter_load_shaders(EsPainter* painter, ShaderData* shader) {
     VkResult result;
     SDL_Log("Loading shaders\n");
     Uint32* vertex_spirv;
     Sint64 vertex_shader_length;
-    vertex_shader_length = painter_read_shader_file(vertex_spirv_file, &vertex_spirv);
+    vertex_shader_length = painter_read_shader_file(shader->vertex_shader, &vertex_spirv);
     if (vertex_shader_length < 0) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not read vertex shader.");
         painter_cleanup(painter);
@@ -1643,7 +1645,7 @@ SDL_bool _painter_load_shaders(EsPainter* painter, ShaderData* shader, const cha
     }
     Uint32* fragment_spirv;
     Sint64 fragment_shader_length;
-    fragment_shader_length = painter_read_shader_file(fragment_spirv_file, &fragment_spirv);
+    fragment_shader_length = painter_read_shader_file(shader->fragment_shader, &fragment_spirv);
     if (fragment_shader_length < 0) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not read fragment shader.");
         painter_cleanup(painter);
@@ -1887,5 +1889,50 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
         painter_cleanup(painter);
         return SDL_FALSE;
     }
+    return SDL_TRUE;
+}
+
+SDL_bool _painter_init_shader_data(EsPainter* painter, ShaderData* shader, SDL_bool is_skybox) {
+    SDL_bool sdl_result;
+    sdl_result = _painter_load_shaders(painter, shader);
+    if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_create_descriptor_set_layout(painter, shader);
+    if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_create_pipeline(painter, shader);
+    if (!sdl_result) return SDL_FALSE;
+    if (is_skybox) 
+         sdl_result = _painter_load_cubemap_and_sampler(painter, SKYBOX_MODEL_TEXTURE_PATH0, SKYBOX_MODEL_TEXTURE_PATH1, SKYBOX_MODEL_TEXTURE_PATH2, SKYBOX_MODEL_TEXTURE_PATH3, SKYBOX_MODEL_TEXTURE_PATH4, SKYBOX_MODEL_TEXTURE_PATH5, shader);
+    else
+        sdl_result = _painter_load_image_and_sampler(painter, shader->texture_filepath, shader);
+    if (!sdl_result) return _painter_custom_error("Texture Load Failed", shader->shader_name);
+
+    VkMemoryPropertyFlags vertex_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    VkMemoryPropertyFlags vertex_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    VkMemoryPropertyFlags index_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    VkMemoryPropertyFlags index_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+    shader->vertex_staging_buffer_size = shader->num_vertices * sizeof(EsVertex);
+    // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
+    // the offsets and things.
+    sdl_result = _painter_create_buffer(painter, shader->vertex_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, vertex_staging_property_flags, &shader->vertex_staging_buffer, &shader->vertex_staging_buffer_memory);
+    if (!sdl_result) return SDL_FALSE;
+    shader->vertex_buffer_size = shader->num_vertices * sizeof(EsVertex);
+    sdl_result = _painter_create_buffer(painter, shader->vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertex_property_flags, &shader->vertex_buffer, &shader->vertex_buffer_memory);
+    if (!sdl_result) return SDL_FALSE;
+
+    shader->index_staging_buffer_size = shader->num_indices * sizeof(Uint32);
+    // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
+    // the offsets and things.
+    SDL_Log("num vertices = %i num indices = %i\n", shader->num_vertices, shader->num_indices);
+    sdl_result = _painter_create_buffer(painter, shader->index_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, index_staging_property_flags, &shader->index_staging_buffer, &shader->index_staging_buffer_memory);
+    if (!sdl_result) return SDL_FALSE;
+    shader->index_buffer_size = shader->num_indices * sizeof(Uint32);
+    sdl_result = _painter_create_buffer(painter, shader->index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, index_property_flags, &shader->index_buffer, &shader->index_buffer_memory);
+    if (!sdl_result) return SDL_FALSE;
+
+    sdl_result = _painter_load_buffer_via_staging(painter, shader->vertices, &shader->vertex_staging_buffer_memory, &shader->vertex_staging_buffer, &shader->vertex_buffer, shader->vertex_staging_buffer_size);
+    if (!sdl_result) _painter_cleanup_error(painter, "Could not copy vertices to buffer.", shader->shader_name);
+    sdl_result = _painter_load_buffer_via_staging(painter, shader->indices, &shader->index_staging_buffer_memory, &shader->index_staging_buffer, &shader->index_buffer, shader->index_staging_buffer_size);
+    if (!sdl_result) _painter_cleanup_error(painter, "Could not copy indices to buffer.", shader->shader_name);
     return SDL_TRUE;
 }

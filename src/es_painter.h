@@ -25,6 +25,10 @@ typedef struct {
 } UniformBufferObject;
 
 typedef struct {
+    const char* shader_name;
+    const char* vertex_shader;
+    const char* fragment_shader;
+    const char* texture_filepath;
     EsVertex* vertices;
     Uint32* indices;
     Uint32 num_vertices;
@@ -92,9 +96,9 @@ typedef struct {
     vec3 camera_position;
     float camera_fov;
     Uint32 start_time;
-    ShaderData* tree_shader;
-    ShaderData* grass_shader;
     ShaderData* skybox_shader;
+    Uint32 num_shaders;
+    ShaderData* shaders;
 } EsPainter;
 
 extern SDL_bool painter_initialise(EsPainter* painter);

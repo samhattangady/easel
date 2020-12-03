@@ -40,6 +40,22 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     size_t num_materials;
     Uint32 flags = TINYOBJ_FLAG_TRIANGULATE;
     int ret;
+
+    ShaderData tree_shader = painter->shaders[0];
+    ShaderData grass_shader = painter->shaders[1];
+
+    grass_shader.shader_name = "Grass Shader";
+    grass_shader.vertex_shader = "data/spirv/grass_vertex.spv";
+    grass_shader.fragment_shader = "data/spirv/grass_fragment.spv";
+    grass_shader.texture_filepath = GRASS_MODEL_TEXTURE_PATH;
+    tree_shader.shader_name = "Tree Shader";
+    tree_shader.vertex_shader = "data/spirv/tree_vertex.spv";
+    tree_shader.fragment_shader = "data/spirv/tree_fragment.spv";
+    tree_shader.texture_filepath = TREE_MODEL_TEXTURE_PATH;
+    painter->skybox_shader->shader_name = "Skybox Shader";
+    painter->skybox_shader->vertex_shader = "data/spirv/skybox_vertex.spv";
+    painter->skybox_shader->fragment_shader = "data/spirv/skybox_fragment.spv";
+
     ret = tinyobj_parse_obj(&attrib, &shapes, &num_shapes, &materials,
                             &num_materials, GRASS_MODEL_PATH, _painter_read_obj_file, flags);
     if (ret != TINYOBJ_SUCCESS) {
@@ -47,10 +63,10 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    painter->grass_shader->num_vertices = attrib.num_vertices * GRASS_INSTANCES;
-    painter->grass_shader->vertices = (EsVertex*) SDL_malloc(painter->grass_shader->num_vertices * sizeof(EsVertex));
-    painter->grass_shader->num_indices = attrib.num_faces * GRASS_INSTANCES;
-    painter->grass_shader->indices = (Uint32*) SDL_malloc(painter->grass_shader->num_indices * sizeof(Uint32));
+    grass_shader.num_vertices = attrib.num_vertices * GRASS_INSTANCES;
+    grass_shader.vertices = (EsVertex*) SDL_malloc(grass_shader.num_vertices * sizeof(EsVertex));
+    grass_shader.num_indices = attrib.num_faces * GRASS_INSTANCES;
+    grass_shader.indices = (Uint32*) SDL_malloc(grass_shader.num_indices * sizeof(Uint32));
     if (num_shapes != 1) {
         warehouse_error_popup("Error in Setup.", "Currently only support obj with 1 shape");
         painter_cleanup(painter);
@@ -69,13 +85,13 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         vert.normal.x = 0.0f;
         vert.normal.y = 0.0f;
         vert.normal.z = 1.0f;
-        painter->grass_shader->vertices[i] = vert;
+        grass_shader.vertices[i] = vert;
     }
     for (Uint32 i=0; i<attrib.num_faces; i++) {
         tinyobj_vertex_index_t face = attrib.faces[i];
-        painter->grass_shader->indices[i] = face.v_idx;
-        painter->grass_shader->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
-        painter->grass_shader->vertices[face.v_idx].tex.y = attrib.texcoords[face.vt_idx*2 + 1];
+        grass_shader.indices[i] = face.v_idx;
+        grass_shader.vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
+        grass_shader.vertices[face.v_idx].tex.y = attrib.texcoords[face.vt_idx*2 + 1];
     }
     for (Uint32 i=1; i<GRASS_INSTANCES; i++) {
         float x = (((float) rand() / (float) RAND_MAX) - 0.5f) * GRASS_RADIUS*2.0f;
@@ -84,19 +100,18 @@ SDL_bool _painter_load_data(EsPainter* painter) {
             i--;
             continue;
         }
-        float y = 1.0 * stb_perlin_noise3(x/10.0f, 0, z/10.0f, 0, 0, 0);
+        float y = 1.0f * stb_perlin_noise3(x/10.0f, 0, z/10.0f, 0, 0, 0);
         for (Uint32 j=0; j<GRASS_NUM_VERTICES; j++) {
-            EsVertex vert = painter->grass_shader->vertices[j];
+            EsVertex vert = grass_shader.vertices[j];
             vert.pos.x += x;
             vert.pos.y += y;
             vert.pos.z += z;        
-            painter->grass_shader->vertices[i*GRASS_NUM_VERTICES + j] = vert;
+            grass_shader.vertices[i*GRASS_NUM_VERTICES + j] = vert;
         }
         for (Uint32 j=0; j<attrib.num_faces; j++) {
-            painter->grass_shader->indices[i*attrib.num_faces + j] = i*GRASS_NUM_VERTICES + painter->grass_shader->indices[j];
+            grass_shader.indices[i*attrib.num_faces + j] = i*GRASS_NUM_VERTICES + grass_shader.indices[j];
         }
     }
-    // SDL_Log("perlin: %f", stb_perlin_noise3(0.01, 0.2, 2.1, 0, 0, 0));
     tinyobj_attrib_free(&attrib);
     tinyobj_shapes_free(shapes, num_shapes);
     tinyobj_materials_free(materials, num_materials);
@@ -146,29 +161,29 @@ SDL_bool _painter_load_data(EsPainter* painter) {
             i--;
             continue;
         }
-        float y = 1.0 * stb_perlin_noise3(x/10.0f, 0, z/10.0f, 0, 0, 0);
+        float y = 1.0f * stb_perlin_noise3(x/10.0f, 0, z/10.0f, 0, 0, 0);
         vec3 pos = build_vec3(x, y, z);
         EsTree tree_raw = trees_gen_test();
         trees_add_to_geom_at_pos(&tree_raw, &tree, pos);
     }
     geom_simplify_geometry(&tree);
-    painter->tree_shader->num_vertices = tree.num_vertices;
-    painter->tree_shader->vertices = (EsVertex*) SDL_malloc(painter->tree_shader->num_vertices * sizeof(EsVertex));
-    painter->tree_shader->num_indices = tree.num_faces * 3;
-    painter->tree_shader->indices = (Uint32*) SDL_malloc(painter->tree_shader->num_indices * sizeof(Uint32));
+    tree_shader.num_vertices = tree.num_vertices;
+    tree_shader.vertices = (EsVertex*) SDL_malloc(tree_shader.num_vertices * sizeof(EsVertex));
+    tree_shader.num_indices = tree.num_faces * 3;
+    tree_shader.indices = (Uint32*) SDL_malloc(tree_shader.num_indices * sizeof(Uint32));
     for (Uint32 i=0; i<tree.num_vertices; i++) {
         EsVertex vert;
         vert.pos = tree.vertices[i];
         vert.color.x = 0.0;
         vert.color.y = 0.0;
         vert.color.z = 0.0;
-        painter->tree_shader->vertices[i] = vert;
+        tree_shader.vertices[i] = vert;
     }
     for (Uint32 i=0; i<tree.num_faces; i++) {
         EsFace face = tree.faces[i];
-        EsVertex vert_x = painter->tree_shader->vertices[face.verts.x];
-        EsVertex vert_y = painter->tree_shader->vertices[face.verts.y];
-        EsVertex vert_z = painter->tree_shader->vertices[face.verts.z];
+        EsVertex vert_x = tree_shader.vertices[face.verts.x];
+        EsVertex vert_y = tree_shader.vertices[face.verts.y];
+        EsVertex vert_z = tree_shader.vertices[face.verts.z];
         vert_x.tex = tree.textures[face.texs.x];
         vert_y.tex = tree.textures[face.texs.y];
         vert_z.tex = tree.textures[face.texs.z];
@@ -178,13 +193,16 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         // vert_x.color = tree.colors[face.cols.x];
         // vert_y.color = tree.colors[face.cols.y];
         // vert_z.color = tree.colors[face.cols.z];
-        painter->tree_shader->vertices[face.verts.x] = vert_x;
-        painter->tree_shader->vertices[face.verts.y] = vert_y;
-        painter->tree_shader->vertices[face.verts.z] = vert_z;
-        painter->tree_shader->indices[i*3 + 0] = face.verts.x;
-        painter->tree_shader->indices[i*3 + 1] = face.verts.y;
-        painter->tree_shader->indices[i*3 + 2] = face.verts.z;
+        tree_shader.vertices[face.verts.x] = vert_x;
+        tree_shader.vertices[face.verts.y] = vert_y;
+        tree_shader.vertices[face.verts.z] = vert_z;
+        tree_shader.indices[i*3 + 0] = face.verts.x;
+        tree_shader.indices[i*3 + 1] = face.verts.y;
+        tree_shader.indices[i*3 + 2] = face.verts.z;
     }
+
+    painter->shaders[0] = tree_shader;
+    painter->shaders[1] = grass_shader;
 
     painter->uniform_buffer_object.model = identity_mat4();
     painter->camera_fov = 45.0f;
@@ -198,9 +216,9 @@ SDL_bool painter_initialise(EsPainter* painter) {
 
     sdl_result = _painter_initialise_sdl_window(painter, "Easel");
     if (!sdl_result) return SDL_FALSE;
-    painter->grass_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
+    painter->num_shaders = 2;
     painter->skybox_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
-    painter->tree_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
+    painter->shaders = (ShaderData*) SDL_malloc(painter->num_shaders * sizeof(ShaderData));
     sdl_result = _painter_load_data(painter);
     if (!sdl_result) return SDL_FALSE;
     sdl_result = _painter_init_instance(painter);
@@ -225,120 +243,12 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     sdl_result = _painter_swapchain_renderpass_init(painter);
     if (!sdl_result) return SDL_FALSE;
 
-    sdl_result = _painter_load_shaders(painter, painter->grass_shader, "data/spirv/grass_vertex.spv", "data/spirv/grass_fragment.spv");
+    for (Uint32 i=0; i<painter->num_shaders; i++) {
+        sdl_result = _painter_init_shader_data(painter, &painter->shaders[i], SDL_FALSE);
+        if (!sdl_result) return SDL_FALSE;
+    }
+    sdl_result = _painter_init_shader_data(painter, painter->skybox_shader, SDL_TRUE);
     if (!sdl_result) return SDL_FALSE;
-    sdl_result = _painter_create_descriptor_set_layout(painter, painter->grass_shader);
-    if (!sdl_result) return SDL_FALSE;
-    sdl_result = _painter_create_pipeline(painter, painter->grass_shader);
-    if (!sdl_result) return SDL_FALSE;
-
-    sdl_result = _painter_load_shaders(painter, painter->skybox_shader, "data/spirv/skybox_vertex.spv", "data/spirv/skybox_fragment.spv");
-    if (!sdl_result) return SDL_FALSE;
-    sdl_result = _painter_create_descriptor_set_layout(painter, painter->skybox_shader);
-    if (!sdl_result) return SDL_FALSE;
-    sdl_result = _painter_create_pipeline(painter, painter->skybox_shader);
-    if (!sdl_result) return SDL_FALSE;
-
-    sdl_result = _painter_load_shaders(painter, painter->tree_shader, "data/spirv/tree_vertex.spv", "data/spirv/tree_fragment.spv");
-    if (!sdl_result) return SDL_FALSE;
-    sdl_result = _painter_create_descriptor_set_layout(painter, painter->tree_shader);
-    if (!sdl_result) return SDL_FALSE;
-    sdl_result = _painter_create_pipeline(painter, painter->tree_shader);
-    if (!sdl_result) return SDL_FALSE;
-
-    sdl_result = _painter_load_image_and_sampler(painter, GRASS_MODEL_TEXTURE_PATH, painter->grass_shader);
-    if (!sdl_result) return _painter_custom_error("Setup Error", "Grass texture loading");
-    sdl_result = _painter_load_cubemap_and_sampler(painter, SKYBOX_MODEL_TEXTURE_PATH0, SKYBOX_MODEL_TEXTURE_PATH1, SKYBOX_MODEL_TEXTURE_PATH2, SKYBOX_MODEL_TEXTURE_PATH3, SKYBOX_MODEL_TEXTURE_PATH4, SKYBOX_MODEL_TEXTURE_PATH5, painter->skybox_shader);
-    if (!sdl_result) return _painter_custom_error("Setup Error", "skybox texture loading");
-    sdl_result = _painter_load_image_and_sampler(painter, TREE_MODEL_TEXTURE_PATH, painter->tree_shader);
-    if (!sdl_result) return _painter_custom_error("Setup Error", "Grass texture loading");
-
-    SDL_Log("creating grass buffers\n");
-    painter->grass_shader->vertex_staging_buffer_size = painter->grass_shader->num_vertices * sizeof(EsVertex);
-    VkMemoryPropertyFlags vertex_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
-    // the offsets and things.
-    sdl_result = _painter_create_buffer(painter, painter->grass_shader->vertex_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, vertex_staging_property_flags, &painter->grass_shader->vertex_staging_buffer, &painter->grass_shader->vertex_staging_buffer_memory);
-    if (!sdl_result) return SDL_FALSE;
-    painter->grass_shader->vertex_buffer_size = painter->grass_shader->num_vertices * sizeof(EsVertex);
-    VkMemoryPropertyFlags vertex_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    sdl_result = _painter_create_buffer(painter, painter->grass_shader->vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertex_property_flags, &painter->grass_shader->vertex_buffer, &painter->grass_shader->vertex_buffer_memory);
-    if (!sdl_result) return SDL_FALSE;
-
-    painter->grass_shader->index_staging_buffer_size = painter->grass_shader->num_indices * sizeof(Uint32);
-    VkMemoryPropertyFlags index_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
-    // the offsets and things.
-    SDL_Log("num vertices = %i num indices = %i\n", painter->grass_shader->num_vertices, painter->grass_shader->num_indices);
-    sdl_result = _painter_create_buffer(painter, painter->grass_shader->index_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, index_staging_property_flags, &painter->grass_shader->index_staging_buffer, &painter->grass_shader->index_staging_buffer_memory);
-    if (!sdl_result) return SDL_FALSE;
-    painter->grass_shader->index_buffer_size = painter->grass_shader->num_indices * sizeof(Uint32);
-    VkMemoryPropertyFlags index_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    sdl_result = _painter_create_buffer(painter, painter->grass_shader->index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, index_property_flags, &painter->grass_shader->index_buffer, &painter->grass_shader->index_buffer_memory);
-    if (!sdl_result) return SDL_FALSE;
-
-    sdl_result = _painter_load_buffer_via_staging(painter, painter->grass_shader->vertices, &painter->grass_shader->vertex_staging_buffer_memory, &painter->grass_shader->vertex_staging_buffer, &painter->grass_shader->vertex_buffer, painter->grass_shader->vertex_staging_buffer_size);
-    if (!sdl_result) _painter_cleanup_error(painter, "Setup Error", "Could not copy vertices to buffer.");
-    sdl_result = _painter_load_buffer_via_staging(painter, painter->grass_shader->indices, &painter->grass_shader->index_staging_buffer_memory, &painter->grass_shader->index_staging_buffer, &painter->grass_shader->index_buffer, painter->grass_shader->index_staging_buffer_size);
-    if (!sdl_result) _painter_cleanup_error(painter, "Setup Error", "Could not copy indices to buffer.");
-
-    SDL_Log("creating skybox buffers\n");
-    painter->skybox_shader->vertex_staging_buffer_size = painter->skybox_shader->num_vertices * sizeof(EsVertex);
-    vertex_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
-    // the offsets and things.
-    sdl_result = _painter_create_buffer(painter, painter->skybox_shader->vertex_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, vertex_staging_property_flags, &painter->skybox_shader->vertex_staging_buffer, &painter->skybox_shader->vertex_staging_buffer_memory);
-    if (!sdl_result) return SDL_FALSE;
-    painter->skybox_shader->vertex_buffer_size = painter->skybox_shader->num_vertices * sizeof(EsVertex);
-    vertex_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    sdl_result = _painter_create_buffer(painter, painter->skybox_shader->vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertex_property_flags, &painter->skybox_shader->vertex_buffer, &painter->skybox_shader->vertex_buffer_memory);
-    if (!sdl_result) return SDL_FALSE;
-
-    painter->skybox_shader->index_staging_buffer_size = painter->skybox_shader->num_indices * sizeof(Uint32);
-    index_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
-    // the offsets and things.
-    SDL_Log("num vertices = %i num indices = %i\n", painter->skybox_shader->num_vertices, painter->skybox_shader->num_indices);
-    sdl_result = _painter_create_buffer(painter, painter->skybox_shader->index_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, index_staging_property_flags, &painter->skybox_shader->index_staging_buffer, &painter->skybox_shader->index_staging_buffer_memory);
-    if (!sdl_result) return SDL_FALSE;
-    painter->skybox_shader->index_buffer_size = painter->skybox_shader->num_indices * sizeof(Uint32);
-    index_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    sdl_result = _painter_create_buffer(painter, painter->skybox_shader->index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, index_property_flags, &painter->skybox_shader->index_buffer, &painter->skybox_shader->index_buffer_memory);
-    if (!sdl_result) return SDL_FALSE;
-
-    sdl_result = _painter_load_buffer_via_staging(painter, painter->skybox_shader->vertices, &painter->skybox_shader->vertex_staging_buffer_memory, &painter->skybox_shader->vertex_staging_buffer, &painter->skybox_shader->vertex_buffer, painter->skybox_shader->vertex_staging_buffer_size);
-    if (!sdl_result) _painter_cleanup_error(painter, "Setup Error", "Could not copy vertices to buffer.");
-    sdl_result = _painter_load_buffer_via_staging(painter, painter->skybox_shader->indices, &painter->skybox_shader->index_staging_buffer_memory, &painter->skybox_shader->index_staging_buffer, &painter->skybox_shader->index_buffer, painter->skybox_shader->index_staging_buffer_size);
-    if (!sdl_result) _painter_cleanup_error(painter, "Setup Error", "Could not copy indices to buffer.");
-
-    SDL_Log("creating tree buffers\n");
-    painter->tree_shader->vertex_staging_buffer_size = painter->tree_shader->num_vertices * sizeof(EsVertex);
-    vertex_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
-    // the offsets and things.
-    sdl_result = _painter_create_buffer(painter, painter->tree_shader->vertex_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, vertex_staging_property_flags, &painter->tree_shader->vertex_staging_buffer, &painter->tree_shader->vertex_staging_buffer_memory);
-    if (!sdl_result) return SDL_FALSE;
-    painter->tree_shader->vertex_buffer_size = painter->tree_shader->num_vertices * sizeof(EsVertex);
-    vertex_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    sdl_result = _painter_create_buffer(painter, painter->tree_shader->vertex_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertex_property_flags, &painter->tree_shader->vertex_buffer, &painter->tree_shader->vertex_buffer_memory);
-    if (!sdl_result) return SDL_FALSE;
-
-    painter->tree_shader->index_staging_buffer_size = painter->tree_shader->num_indices * sizeof(Uint32);
-    index_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
-    // the offsets and things.
-    SDL_Log("num vertices = %i num indices = %i\n", painter->tree_shader->num_vertices, painter->tree_shader->num_indices);
-    sdl_result = _painter_create_buffer(painter, painter->tree_shader->index_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, index_staging_property_flags, &painter->tree_shader->index_staging_buffer, &painter->tree_shader->index_staging_buffer_memory);
-    if (!sdl_result) return SDL_FALSE;
-    painter->tree_shader->index_buffer_size = painter->tree_shader->num_indices * sizeof(Uint32);
-    index_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    sdl_result = _painter_create_buffer(painter, painter->tree_shader->index_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, index_property_flags, &painter->tree_shader->index_buffer, &painter->tree_shader->index_buffer_memory);
-    if (!sdl_result) return SDL_FALSE;
-
-    sdl_result = _painter_load_buffer_via_staging(painter, painter->tree_shader->vertices, &painter->tree_shader->vertex_staging_buffer_memory, &painter->tree_shader->vertex_staging_buffer, &painter->tree_shader->vertex_buffer, painter->tree_shader->vertex_staging_buffer_size);
-    if (!sdl_result) _painter_cleanup_error(painter, "Setup Error", "Could not copy vertices to buffer.");
-    sdl_result = _painter_load_buffer_via_staging(painter, painter->tree_shader->indices, &painter->tree_shader->index_staging_buffer_memory, &painter->tree_shader->index_staging_buffer, &painter->tree_shader->index_buffer, painter->tree_shader->index_staging_buffer_size);
-    if (!sdl_result) _painter_cleanup_error(painter, "Setup Error", "Could not copy indices to buffer.");
 
     painter->uniform_buffer_size = sizeof(UniformBufferObject);
     painter->uniform_buffers = (VkBuffer*) SDL_malloc(painter->swapchain_image_count * sizeof(VkBuffer));
@@ -348,11 +258,11 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         if (!sdl_result) return SDL_FALSE;
     }
 
-    sdl_result = _painter_create_descriptor_sets(painter, painter->grass_shader);
-    if (!sdl_result) _painter_custom_error("Setup Error", "Could not create descriptor sets");
+    for (Uint32 i=0; i<painter->num_shaders; i++) {
+        sdl_result = _painter_create_descriptor_sets(painter, &painter->shaders[i]);
+        if (!sdl_result) _painter_custom_error("Setup Error", "Could not create descriptor sets");
+    }
     sdl_result = _painter_create_descriptor_sets(painter, painter->skybox_shader);
-    if (!sdl_result) _painter_custom_error("Setup Error", "Could not create descriptor sets");
-    sdl_result = _painter_create_descriptor_sets(painter, painter->tree_shader);
     if (!sdl_result) _painter_custom_error("Setup Error", "Could not create descriptor sets");
 
     sdl_result = _painter_create_framebuffers(painter);
@@ -396,20 +306,14 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
 
         vkCmdBeginRenderPass(painter->command_buffers[i], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        vertex_buffers[0] = painter->tree_shader->vertex_buffer;
-        vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->tree_shader->pipeline);
-        vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
-        vkCmdBindIndexBuffer(painter->command_buffers[i], painter->tree_shader->index_buffer, 0, VK_INDEX_TYPE_UINT32);
-        vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->tree_shader->pipeline_layout, 0, 1, &painter->tree_shader->descriptor_sets[i], 0, NULL);
-        vkCmdDrawIndexed(painter->command_buffers[i], painter->tree_shader->num_indices, 1, 0, 0, 0);
-
-        vertex_buffers[0] = painter->grass_shader->vertex_buffer;
-        vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->grass_shader->pipeline);
-        vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
-        vkCmdBindIndexBuffer(painter->command_buffers[i], painter->grass_shader->index_buffer, 0, VK_INDEX_TYPE_UINT32);
-        vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->grass_shader->pipeline_layout, 0, 1, &painter->grass_shader->descriptor_sets[i], 0, NULL);
-        vkCmdDrawIndexed(painter->command_buffers[i], painter->grass_shader->num_indices, 1, 0, 0, 0);
-
+        for (Uint32 j=0; j<painter->num_shaders; j++) {
+            vertex_buffers[0] = painter->shaders[j].vertex_buffer;
+            vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->shaders[j].pipeline);
+            vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
+            vkCmdBindIndexBuffer(painter->command_buffers[i], painter->shaders[j].index_buffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->shaders[j].pipeline_layout, 0, 1, &painter->shaders[j].descriptor_sets[i], 0, NULL);
+            vkCmdDrawIndexed(painter->command_buffers[i], painter->shaders[j].num_indices, 1, 0, 0, 0);
+        }
         vertex_buffers[0] = painter->skybox_shader->vertex_buffer;
         vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->skybox_shader->pipeline);
         vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
