@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
             SDL_Log("Window is resized\n");
             painter.buffer_resized = SDL_TRUE;
         }
+        result = world_update(&world);
         result = painter_paint_frame(&painter);
         if (!result)
             return -2;

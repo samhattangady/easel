@@ -8,5 +8,6 @@ SDL_bool world_init(EsWorld* w) {
 }
 
 SDL_bool world_update(EsWorld* w) {
+    // w->up_axis = rotate_about_origin_zaxis(w->up_axis, -0.002);
     return SDL_TRUE;
 }
