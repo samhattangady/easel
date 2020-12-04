@@ -35,6 +35,13 @@ typedef struct {
 } vec4;
 
 typedef struct {
+    Uint32 x;
+    Uint32 y;
+    Uint32 z;
+    Uint32 w;
+} vec4ui;
+
+typedef struct {
     vec4 a;
     vec4 b;
     vec4 c;
@@ -69,9 +76,16 @@ extern vec3 vec3_scale(vec3 a, float b);
 extern SDL_bool vec3_is_zero(vec3 a);
 extern float vec3_dot(vec3 a, vec3 b);
 extern vec3 vec3_normalize(vec3 a);
+extern float vec3_length(vec3 a);
+extern float vec3_length_squared(vec3 a);
 extern float vec3_magnitude(vec3 a);
+extern float vec3_distance(vec3 a, vec3 b);
+extern float vec3_distance_squared(vec3 a, vec3 b);
 extern vec3 build_vec3(float x, float y, float z);
+extern vec4 build_vec4(float x, float y, float z, float w);
+extern vec4 build_vec4_vec3f(vec3 v, float w);
 extern vec3ui build_vec3ui(Uint32 x, Uint32 y, Uint32 z);
+extern vec4ui build_vec4ui(Uint32 x, Uint32 y, Uint32 z, Uint32 w);
 extern mat4 rotation_matrix_axis(float angle, vec3 axis);
 extern mat4 rotation_matrix_xaxis(float angle);
 extern mat4 rotation_matrix_yaxis(float angle);
@@ -81,9 +95,12 @@ extern vec3 rotate_about_anchor_axis(vec3 point, vec3 anchor, float angle, vec3 
 extern vec3 rotate_about_origin_xaxis(vec3 point, float angle);
 extern vec3 rotate_about_origin_yaxis(vec3 point, float angle);
 extern vec3 rotate_about_origin_zaxis(vec3 point, float angle);
-extern vec4 build_vec4(float x, float y, float z, float w);
 extern mat4 perspective_projection(float angle, float aspect_ratio, float near, float far);
 extern float deg_to_rad(float deg);
 extern float lerp(float start, float end, float val);
+extern float rand_pos();
+extern float rand_negpos();
+extern vec3 rand_vec3();
+extern vec3 vec3_from_vec4(vec4 a);
 
 #endif

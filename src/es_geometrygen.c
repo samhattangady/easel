@@ -501,6 +501,92 @@ SDL_bool geom_add_oval(EsGeometry* geom, vec3 position, vec3 axis, vec3 normal, 
     return SDL_TRUE;
 }
 
+SDL_bool geom_add_triple_quad_mesh(EsGeometry* geom, vec3 position, vec3 axis, float height, float width, vec2 tex, Uint32 lod) {
+    Uint32 total_vertices = 12;
+    Uint32 total_faces = 6;  // TODO (04 Dec 2020 sam): Figure out whether we need to make this double faced
+    Uint32 total_textures = 1;
+    Uint32 total_normals = 3;
+    if (_geom_remaining_vertices(geom) < total_vertices) {
+        // We just add extra. Don't need to be exact.
+        SDL_bool resize = geom_add_vertices_memory(geom, total_vertices);
+        if (!resize) {
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Add cone : Could not alloc vertices\n");
+            return SDL_FALSE;
+        }
+    }
+    if (_geom_remaining_faces(geom) < total_faces) {
+        SDL_bool resize = geom_add_faces_memory(geom, total_faces);
+        if (!resize) {
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Add cone : Could not alloc faces\n");
+            return SDL_FALSE;
+        }
+    }
+    if (_geom_remaining_textures(geom) < total_textures) {
+        SDL_bool resize = geom_add_textures_memory(geom, total_textures);
+        if (!resize) {
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Add cone : Could not alloc textures\n");
+            return SDL_FALSE;
+        }
+    }
+    if (_geom_remaining_normals(geom) < total_normals) {
+        SDL_bool resize = geom_add_normals_memory(geom, total_normals);
+        if (!resize) {
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Add cone : Could not alloc normals\n");
+            return SDL_FALSE;
+        }
+    }
+    Uint32 first_vertex = geom->num_vertices;
+    Uint32 first_face = geom->num_faces;
+    Uint32 first_texture = geom->num_textures;
+    Uint32 first_normal = geom->num_normals;
+    geom->num_vertices += total_vertices;
+    geom->num_faces += total_faces;
+    geom->num_textures += total_textures;
+    geom->num_normals += total_normals;
+    vec3* vertices = (vec3*) SDL_malloc(total_vertices * sizeof(vec3));
+    EsFace* faces = (EsFace*) SDL_malloc(total_faces * sizeof(EsFace));
+    vec2* textures = (vec2*) SDL_malloc(total_textures * sizeof(vec2));
+    vec3* normals = (vec3*) SDL_malloc(total_normals * sizeof(vec3));
+    if (vertices == NULL || faces == NULL || textures == NULL || normals == NULL)
+        SDL_Log("\n\n\nCOULD NOT ALLOC MEMORY\n\n\n");
+    for (Uint32 i=0; i<6; i++) {
+        vertices[i] = rotate_about_origin_yaxis(build_vec3(width/2.0f, 0.0f, 0.0f), i/6.0f * 2.0f * M_PI);
+        vertices[i+6] = rotate_about_origin_yaxis(build_vec3(width/2.0f, height, 0.0f), i/6.0f * 2.0f * M_PI);
+    }
+    vec3 y_axis = build_vec3(0.0f, 1.0f, 0.0f);
+    axis = vec3_normalize(axis);
+    vec3 perp_axis = vec3_cross(y_axis, axis);
+    float angle = SDL_acosf(vec3_dot(y_axis, axis));
+    for (Uint32 i=0; i<total_vertices; i++) {
+        vertices[i] = vec3_add(position, rotate_about_origin_axis(vertices[i], angle, perp_axis));
+    }
+    textures[0] = tex;
+    // TODO (04 Dec 2020 sam): Use proper normals here.
+    normals[0] = build_vec3(0.0f, 0.0f, 1.0f);
+    vec4ui* quads = (vec4ui*) SDL_malloc(3 * sizeof(vec4ui));
+    quads[0] = build_vec4ui(first_vertex+0, first_vertex+3, first_vertex+9, first_vertex+6);
+    quads[1] = build_vec4ui(first_vertex+1, first_vertex+4, first_vertex+10, first_vertex+7);
+    quads[2] = build_vec4ui(first_vertex+2, first_vertex+5, first_vertex+11, first_vertex+8);
+    for (Uint32 i=0; i<total_faces/2; i++) {
+        faces[i*2 + 0].verts = build_vec3ui(quads[i].x, quads[i].z, quads[i].y);
+        faces[i*2 + 1].verts = build_vec3ui(quads[i].x, quads[i].w, quads[i].z);
+    }
+    for (Uint32 i=0; i<total_faces; i++) {
+        faces[i].texs = build_vec3ui(first_texture, first_texture, first_texture);
+        faces[i].norms = build_vec3ui(first_normal, first_normal, first_normal);
+    }
+    SDL_memcpy(&geom->vertices[first_vertex], vertices, sizeof(vec3)*total_vertices);
+    SDL_memcpy(&geom->faces[first_face], faces, sizeof(EsFace)*total_faces);
+    SDL_memcpy(&geom->textures[first_texture], textures, sizeof(vec2)*total_textures);
+    SDL_memcpy(&geom->normals[first_normal], normals, sizeof(vec3)*total_normals);
+    SDL_free(vertices);
+    SDL_free(faces);
+    SDL_free(textures);
+    SDL_free(normals);
+    SDL_free(quads);
+    return SDL_TRUE;
+}
+
 SDL_bool geom_add_cone_origin_zaxis(EsGeometry* geom, float base_radius, float height, SDL_bool close, Uint32 lod) {
     const vec3 ORIGIN = build_vec3(0.0f, 0.0f, 0.0f);
     const vec3 ZAXIS = build_vec3(0.0f, 0.0f, 1.0f);

@@ -68,6 +68,17 @@ typedef struct {
 } EsLeaf;
 
 typedef struct {
+    vec3 main_pos;
+    float main_radius;
+    vec3 add1_pos;
+    float add1_radius;
+    vec3 add2_pos;
+    float add2_radius;
+    vec3 sub_pos;
+    float sub_radius;
+} EsBranchSDF;
+
+typedef struct {
     Uint32 num_cross_sections;
     Uint32 cross_sections_size;
     EsCrossSection* cross_sections;

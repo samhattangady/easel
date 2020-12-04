@@ -1,10 +1,19 @@
 #include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdarg.h>
 #include "es_warehouse.h"
 
 #define BASE_STRING_LENGTH 1024
+
+float rand_pos() {
+    return (float) rand() / (float) RAND_MAX;
+}
+
+float rand_negpos() {
+    return (rand_pos() - 0.5f) * 2.0f;
+}
+
+vec3 rand_vec3() {
+    return vec3_normalize(build_vec3(rand_negpos(), rand_negpos(), rand_negpos()));
+}
 
 float warehouse_log_2(float num) {
     return (float) SDL_log(num) / (float) SDL_log(2);
@@ -178,8 +187,24 @@ vec3 vec3_normalize(vec3 a) {
     return result;
 }
 
+float vec3_length_squared(vec3 a) {
+    return a.x*a.x + a.y*a.y + a.z*a.z;
+}
+
+float vec3_length(vec3 a) {
+    return SDL_sqrtf(vec3_length_squared(a));
+}
+
 float vec3_magnitude(vec3 a) {
-    return (float) SDL_sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
+    return vec3_length(a);
+}
+
+float vec3_distance(vec3 a, vec3 b) {
+    return vec3_magnitude(vec3_sub(a, b));
+};
+
+float vec3_distance_squared(vec3 a, vec3 b) {
+    return vec3_length_squared(vec3_sub(a, b));
 }
 
 vec2 build_vec2(float x, float y) {
@@ -197,11 +222,38 @@ vec3 build_vec3(float x, float y, float z) {
     return result;
 }
 
+vec4 build_vec4(float x, float y, float z, float w) {
+    vec4 result;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    result.w = w;
+    return result;
+}
+
+vec4 build_vec4_vec3f(vec3 v, float w) {
+    vec4 result;
+    result.x = v.x;
+    result.y = v.y;
+    result.z = v.z;
+    result.w = w;
+    return result;
+}
+
 vec3ui build_vec3ui(Uint32 x, Uint32 y, Uint32 z) {
     vec3ui result;
     result.x = x;
     result.y = y;
     result.z = z;
+    return result;
+}
+
+vec4ui build_vec4ui(Uint32 x, Uint32 y, Uint32 z, Uint32 w) {
+    vec4ui result;
+    result.x = x;
+    result.y = y;
+    result.z = z;
+    result.w = w;
     return result;
 }
 
@@ -271,15 +323,6 @@ vec3 rotate_about_origin_zaxis(vec3 point, float angle) {
     return rotate_about_origin_axis(point, angle, build_vec3(0.0f, 0.0f, 1.0f));
 }
 
-extern vec4 build_vec4(float x, float y, float z, float w) {
-    vec4 result;
-    result.x = x;
-    result.y = y;
-    result.z = z;
-    result.w = w;
-    return result;
-}
-
 extern mat4 perspective_projection(float angle, float aspect_ratio, float near, float far) {
     // https://www.scratchapixel.com/lessons/3d-basic-rendering/perspective-and-orthographic-projection-matrix/opengl-perspective-projection-matrix
     float r = (float) SDL_tan(angle/2.0f) * near;
@@ -302,3 +345,10 @@ float lerp(float start, float end, float val) {
     return start + (end-start)*val;
 }
 
+vec3 vec3_from_vec4(vec4 a) {
+    vec3 result;
+    result.x = a.x;
+    result.y = a.y;
+    result.z = a.z;
+    return result;
+}
