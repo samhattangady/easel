@@ -12,7 +12,7 @@
 
 #include <stdlib.h>
 
-#define GRASS_INSTANCES 4000
+#define GRASS_INSTANCES 2002
 #define GRASS_NUM_VERTICES 4
 #define GRASS_MODEL_PATH "data/obj/grass3.obj"
 #define GRASS_MODEL_TEXTURE_PATH "data/img/grass4.png"
@@ -164,6 +164,10 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     for (Uint32 i=0; i<TREE_INSTANCES; i++) {
         float x = (((float) rand() / (float) RAND_MAX) - 0.5f) * GRASS_RADIUS*2.0f;
         float z = (((float) rand() / (float) RAND_MAX) - 0.5f) * GRASS_RADIUS*2.0f;
+        if (i == 0) {
+            x = 0.0f;
+            z = 0.0f;
+        }
         if (vec3_magnitude(build_vec3(x,0,z)) > GRASS_RADIUS/2.0f) {
             i--;
             continue;

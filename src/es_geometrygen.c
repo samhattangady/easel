@@ -501,10 +501,10 @@ SDL_bool geom_add_oval(EsGeometry* geom, vec3 position, vec3 axis, vec3 normal, 
     return SDL_TRUE;
 }
 
-SDL_bool geom_add_triple_quad_mesh(EsGeometry* geom, vec3 position, vec3 axis, float height, float width, vec2 tex, Uint32 lod) {
+SDL_bool geom_add_triple_quad_mesh(EsGeometry* geom, vec3 position, vec3 axis, float height, float width, vec2 tex1, vec2 tex2, Uint32 lod) {
     Uint32 total_vertices = 12;
     Uint32 total_faces = 6;  // TODO (04 Dec 2020 sam): Figure out whether we need to make this double faced
-    Uint32 total_textures = 1;
+    Uint32 total_textures = 4;
     Uint32 total_normals = 3;
     if (_geom_remaining_vertices(geom) < total_vertices) {
         // We just add extra. Don't need to be exact.
@@ -560,7 +560,10 @@ SDL_bool geom_add_triple_quad_mesh(EsGeometry* geom, vec3 position, vec3 axis, f
     for (Uint32 i=0; i<total_vertices; i++) {
         vertices[i] = vec3_add(position, rotate_about_origin_axis(vertices[i], angle, perp_axis));
     }
-    textures[0] = tex;
+    textures[0] = tex1;
+    textures[1] = build_vec2(tex1.x, tex2.y);
+    textures[2] = tex2;
+    textures[3] = build_vec2(tex2.x, tex1.y);
     // TODO (04 Dec 2020 sam): Use proper normals here.
     normals[0] = build_vec3(0.0f, 0.0f, 1.0f);
     vec4ui* quads = (vec4ui*) SDL_malloc(3 * sizeof(vec4ui));
@@ -570,9 +573,10 @@ SDL_bool geom_add_triple_quad_mesh(EsGeometry* geom, vec3 position, vec3 axis, f
     for (Uint32 i=0; i<total_faces/2; i++) {
         faces[i*2 + 0].verts = build_vec3ui(quads[i].x, quads[i].z, quads[i].y);
         faces[i*2 + 1].verts = build_vec3ui(quads[i].x, quads[i].w, quads[i].z);
+        faces[i*2 + 0].texs = build_vec3ui(first_texture+0, first_texture+2, first_texture+1);
+        faces[i*2 + 1].texs = build_vec3ui(first_texture+0, first_texture+3, first_texture+2);
     }
     for (Uint32 i=0; i<total_faces; i++) {
-        faces[i].texs = build_vec3ui(first_texture, first_texture, first_texture);
         faces[i].norms = build_vec3ui(first_normal, first_normal, first_normal);
     }
     SDL_memcpy(&geom->vertices[first_vertex], vertices, sizeof(vec3)*total_vertices);
