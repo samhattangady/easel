@@ -53,7 +53,7 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     grass_shader.texture_filepath = GRASS_MODEL_TEXTURE_PATH;
     tree_shader.shader_name = "Tree Shader";
     tree_shader.vertex_shader = "data/spirv/tree_vertex.spv";
-    tree_shader.fragment_shader = "data/spirv/fragment.spv";
+    tree_shader.fragment_shader = "data/spirv/tree_fragment.spv";
     tree_shader.texture_filepath = TREE_MODEL_TEXTURE_PATH;
     ground_shader.shader_name = "Ground Shader";
     ground_shader.vertex_shader = "data/spirv/vertex.spv";

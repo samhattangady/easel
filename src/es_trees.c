@@ -467,7 +467,7 @@ SDL_bool trees_add_to_geom_at_pos(EsTree* tree, EsGeometry* geom, vec3 pos) {
         EsLeaf leaf = tree->leaves[i];
         if (vec3_is_zero(leaf.position))
             continue;
-        geom_add_triple_quad_mesh(geom, vec3_add(pos, leaf.position), leaf.axis, leaf.length, leaf.width, build_vec2(1.0, 1.0), build_vec2(0.03, 0.03), 0);
+        geom_add_triple_quad_mesh(geom, vec3_add(pos, leaf.position), leaf.axis, leaf.length, leaf.width, build_vec2(0.03, 0.03), build_vec2(1.0, 1.0), 0);
     }
     return SDL_TRUE;    
 }
