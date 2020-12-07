@@ -201,9 +201,9 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         vert_x.normal = tree.normals[face.norms.x];
         vert_y.normal = tree.normals[face.norms.y];
         vert_z.normal = tree.normals[face.norms.z];
-        // vert_x.color = tree.colors[face.cols.x];
-        // vert_y.color = tree.colors[face.cols.y];
-        // vert_z.color = tree.colors[face.cols.z];
+        vert_x.color = tree.colors[face.cols.x];
+        vert_y.color = tree.colors[face.cols.y];
+        vert_z.color = tree.colors[face.cols.z];
         tree_shader.vertices[face.verts.x] = vert_x;
         tree_shader.vertices[face.verts.y] = vert_y;
         tree_shader.vertices[face.verts.z] = vert_z;

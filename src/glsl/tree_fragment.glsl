@@ -36,10 +36,12 @@ void main() {
     vec2 texCoord = fragTexCoord;
     // TODO (07 Dec 2020 sam): See how this can be improved
     if (texCoord.x > 0) {
-        texCoord = rotate(texCoord, distance(texCoord, vec2(0.0)) * sin(time*1.5) * noise(inPos.xy) * 3.1415/8.0f);
+        texCoord = rotate(texCoord, distance(texCoord, vec2(0.0)) * sin(time*1.7) * noise(inPos.xz) * 3.1415/8.0f);
     }
     vec4 col = texture(texSampler, texCoord);
     if (col.a < 0.3)
         discard;
+    col = mix(col, col*0.5, inPos.w);
+    // col = inPos;
     outColor = col;
 }

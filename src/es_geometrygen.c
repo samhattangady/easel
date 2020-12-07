@@ -10,6 +10,7 @@ Uint32 _geom_get_vertices_from_radius(float radius, Uint32 lod);
 Uint32 _geom_remaining_vertices(EsGeometry* geom);
 Uint32 _geom_remaining_faces(EsGeometry* geom);
 Uint32 _geom_remaining_textures(EsGeometry* geom);
+Uint32 _geom_remaining_colors(EsGeometry* geom);
 Uint32 _geom_remaining_normals(EsGeometry* geom);
 
 typedef struct {
@@ -162,6 +163,10 @@ Uint32 _geom_remaining_normals(EsGeometry* geom) {
     return geom->normals_size - geom->num_normals;
 }
 
+Uint32 _geom_remaining_colors(EsGeometry* geom) {
+    return geom->colors_size - geom->num_colors;
+}
+
 EsGeometry geom_init_geometry_size(Uint32 vertices_size, Uint32 faces_size, Uint32 textures_size, Uint32 normals_size, Uint32 colors_size) {
     EsGeometry geom;
     geom.num_vertices = 0;
@@ -183,6 +188,7 @@ EsGeometry geom_init_geometry_size(Uint32 vertices_size, Uint32 faces_size, Uint
 }
 
 SDL_bool geom_add_vertices_memory(EsGeometry* geom, Uint32 vertices_size) {
+    // TODO (07 Dec 2020 sam): Grow memory exponentially. Otherwise will need too many reallocs.
     vec3* new_vertices = (vec3*) SDL_realloc(geom->vertices, (geom->vertices_size+vertices_size) * sizeof(vec3));
     if (new_vertices == NULL)
         return SDL_FALSE;
@@ -314,12 +320,13 @@ SDL_bool geom_add_cone(EsGeometry* geom, vec3 root, vec3 axis, float base_radius
     return SDL_TRUE;
 }
 
-SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos, vec3 base_axis, float tip_radius, vec3 tip_pos, vec3 tip_axis, vec2 tex, Uint32 lod) {
+SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos, vec3 base_axis, float tip_radius, vec3 tip_pos, vec3 tip_axis, vec2 tex, Uint32 lod, float tree_height, float branch_offset_start, float branch_offset_end) {
     Uint32 base_num_vertices = _geom_get_vertices_from_radius(base_radius, lod);
     Uint32 total_vertices = base_num_vertices * 2;
     Uint32 total_faces = base_num_vertices * 2;
     Uint32 total_textures = 1;
     Uint32 total_normals = total_vertices;
+    Uint32 total_colors = total_vertices;
     if (_geom_remaining_vertices(geom) < total_vertices) {
         // We just add extra. Don't need to be exact.
         SDL_bool resize = geom_add_vertices_memory(geom, total_vertices);
@@ -349,19 +356,29 @@ SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos,
             return SDL_FALSE;
         }
     }
+    if (_geom_remaining_colors(geom) < total_colors) {
+        SDL_bool resize = geom_add_colors_memory(geom, total_colors);
+        if (!resize) {
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Add cone : Could not alloc colors\n");
+            return SDL_FALSE;
+        }
+    }
     Uint32 first_vertex = geom->num_vertices;
     Uint32 first_face = geom->num_faces;
     Uint32 first_texture = geom->num_textures;
     Uint32 first_normal = geom->num_normals;
+    Uint32 first_color = geom->num_colors;
     geom->num_vertices += total_vertices;
     geom->num_faces += total_faces;
     geom->num_textures += total_textures;
     geom->num_normals += total_normals;
+    geom->num_colors += total_colors;
     vec3* vertices = (vec3*) SDL_malloc(total_vertices * sizeof(vec3));
     EsFace* faces = (EsFace*) SDL_malloc(total_faces * sizeof(EsFace));
     vec2* textures = (vec2*) SDL_malloc(total_textures * sizeof(vec2));
     vec3* normals = (vec3*) SDL_malloc(total_normals * sizeof(vec3));
-    if (vertices == NULL || faces == NULL || textures == NULL || normals == NULL)
+    vec3* colors = (vec3*) SDL_malloc(total_colors * sizeof(vec3));
+    if (vertices == NULL || faces == NULL || textures == NULL || normals == NULL || colors == NULL)
         SDL_Log("\n\n\nCOULD NOT ALLOC MEMORY\n\n\n");
     for (Uint32 i=0; i<base_num_vertices; i++) {
         float angle = (i-1.0f) / (base_num_vertices*1.0f) * (2.0f* (float)M_PI);
@@ -379,6 +396,7 @@ SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos,
     for (Uint32 i=0; i<base_num_vertices; i++) {
         vertices[i] = vec3_add(base_pos, rotate_about_origin_axis(vertices[i], base_angle, base_perp_axis));
         normals[i] = vec3_normalize(vec3_sub(vertices[i], base_pos));
+        colors[i] = build_vec3(vertices[i].y/tree_height, branch_offset_start, 0.0f);
     }
     tip_axis = vec3_normalize(tip_axis);
     vec3 tip_perp_axis = vec3_cross(y_axis, tip_axis);
@@ -386,6 +404,7 @@ SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos,
     for (Uint32 i=0; i<base_num_vertices; i++) {
         vertices[i+base_num_vertices] = vec3_add(tip_pos, rotate_about_origin_axis(vertices[i+base_num_vertices], tip_angle, tip_perp_axis));
         normals[i+base_num_vertices] = vec3_normalize(vec3_sub(vertices[i+base_num_vertices], tip_pos));
+        colors[i+base_num_vertices] = build_vec3(vertices[i+base_num_vertices].y/tree_height, branch_offset_end, 0.0f);
     }
     textures[0] = tex;
     for (Uint32 i=0; i<base_num_vertices-1; i++) {
@@ -395,24 +414,31 @@ SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos,
         faces[2*i + 1].texs = build_vec3ui(first_texture, first_texture, first_texture);
         faces[2*i + 0].norms = build_vec3ui(first_normal+i, first_normal+i+1, first_normal+base_num_vertices+i);
         faces[2*i + 1].norms = build_vec3ui(first_normal+i+1, first_normal+base_num_vertices+i+1, first_normal+base_num_vertices+i);
+        faces[2*i + 0].cols = build_vec3ui(first_color+i, first_color+i+1, first_color+base_num_vertices+i);
+        faces[2*i + 1].cols = build_vec3ui(first_color+i+1, first_color+base_num_vertices+i+1, first_color+base_num_vertices+i);
     }
     Uint32 last_index = 2*(base_num_vertices-1);
     Uint32 last_vertex = base_num_vertices-1;
     Uint32 last_normal = base_num_vertices-1;
+    Uint32 last_color = base_num_vertices-1;
     faces[last_index + 0].verts = build_vec3ui(first_vertex+last_vertex, first_vertex+0, first_vertex+base_num_vertices+last_vertex);
     faces[last_index + 1].verts = build_vec3ui(first_vertex+0, first_vertex+base_num_vertices+0, first_vertex+base_num_vertices+last_vertex);
     faces[last_index + 0].texs = build_vec3ui(first_texture, first_texture, first_texture);
     faces[last_index + 1].texs = build_vec3ui(first_texture, first_texture, first_texture);
     faces[last_index + 0].norms = build_vec3ui(first_normal+last_normal, first_normal+0, first_normal+base_num_vertices+last_normal);
     faces[last_index + 1].norms = build_vec3ui(first_normal+0, first_normal+base_num_vertices+0, first_normal+base_num_vertices+last_normal);
+    faces[last_index + 0].cols = build_vec3ui(first_color+last_color, first_color+0, first_color+base_num_vertices+last_color);
+    faces[last_index + 1].cols = build_vec3ui(first_color+0, first_color+base_num_vertices+0, first_color+base_num_vertices+last_color);
     SDL_memcpy(&geom->vertices[first_vertex], vertices, sizeof(vec3)*total_vertices);
     SDL_memcpy(&geom->faces[first_face], faces, sizeof(EsFace)*total_faces);
     SDL_memcpy(&geom->textures[first_texture], textures, sizeof(vec2)*total_textures);
     SDL_memcpy(&geom->normals[first_normal], normals, sizeof(vec3)*total_normals);
+    SDL_memcpy(&geom->colors[first_color], colors, sizeof(vec3)*total_colors);
     SDL_free(vertices);
     SDL_free(faces);
     SDL_free(textures);
     SDL_free(normals);
+    SDL_free(colors);
     return SDL_TRUE;
 }
 
@@ -501,11 +527,12 @@ SDL_bool geom_add_oval(EsGeometry* geom, vec3 position, vec3 axis, vec3 normal, 
     return SDL_TRUE;
 }
 
-SDL_bool geom_add_triple_quad_mesh(EsGeometry* geom, vec3 position, vec3 axis, float height, float width, vec2 tex1, vec2 tex2, Uint32 lod) {
+SDL_bool geom_add_triple_quad_mesh(EsGeometry* geom, vec3 position, vec3 axis, float height, float width, vec2 tex1, vec2 tex2, Uint32 lod, float tree_height, float branch_length, vec3 branch_root_pos) {
     Uint32 total_vertices = 12;
     Uint32 total_faces = 6;  // TODO (04 Dec 2020 sam): Figure out whether we need to make this double faced
     Uint32 total_textures = 4;
     Uint32 total_normals = 3;
+    Uint32 total_colors = total_vertices;
     if (_geom_remaining_vertices(geom) < total_vertices) {
         // We just add extra. Don't need to be exact.
         SDL_bool resize = geom_add_vertices_memory(geom, total_vertices);
@@ -535,23 +562,35 @@ SDL_bool geom_add_triple_quad_mesh(EsGeometry* geom, vec3 position, vec3 axis, f
             return SDL_FALSE;
         }
     }
+    if (_geom_remaining_colors(geom) < total_colors) {
+        SDL_bool resize = geom_add_colors_memory(geom, total_colors);
+        if (!resize) {
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Add cone : Could not alloc colors\n");
+            return SDL_FALSE;
+        }
+    }
     Uint32 first_vertex = geom->num_vertices;
     Uint32 first_face = geom->num_faces;
     Uint32 first_texture = geom->num_textures;
     Uint32 first_normal = geom->num_normals;
+    Uint32 first_color = geom->num_colors;
     geom->num_vertices += total_vertices;
     geom->num_faces += total_faces;
     geom->num_textures += total_textures;
     geom->num_normals += total_normals;
+    geom->num_colors += total_colors;
     vec3* vertices = (vec3*) SDL_malloc(total_vertices * sizeof(vec3));
     EsFace* faces = (EsFace*) SDL_malloc(total_faces * sizeof(EsFace));
     vec2* textures = (vec2*) SDL_malloc(total_textures * sizeof(vec2));
     vec3* normals = (vec3*) SDL_malloc(total_normals * sizeof(vec3));
-    if (vertices == NULL || faces == NULL || textures == NULL || normals == NULL)
+    vec3* colors = (vec3*) SDL_malloc(total_colors * sizeof(vec3));
+    if (vertices == NULL || faces == NULL || textures == NULL || normals == NULL || colors == NULL)
         SDL_Log("\n\n\nCOULD NOT ALLOC MEMORY\n\n\n");
     for (Uint32 i=0; i<6; i++) {
         vertices[i] = rotate_about_origin_yaxis(build_vec3(width/2.0f, 0.0f, 0.0f), i/6.0f * 2.0f * M_PI);
+        colors[i].z = 1.0f;
         vertices[i+6] = rotate_about_origin_yaxis(build_vec3(width/2.0f, height, 0.0f), i/6.0f * 2.0f * M_PI);
+        colors[i+6].z = 0.0f;
     }
     vec3 y_axis = build_vec3(0.0f, 1.0f, 0.0f);
     axis = vec3_normalize(axis);
@@ -559,6 +598,8 @@ SDL_bool geom_add_triple_quad_mesh(EsGeometry* geom, vec3 position, vec3 axis, f
     float angle = SDL_acosf(vec3_dot(y_axis, axis));
     for (Uint32 i=0; i<total_vertices; i++) {
         vertices[i] = vec3_add(position, rotate_about_origin_axis(vertices[i], angle, perp_axis));
+        colors[i].x = vertices[i].y / tree_height;
+        colors[i].y = vec3_distance(vertices[i], branch_root_pos) / branch_length;
     }
     textures[0] = tex1;
     textures[1] = build_vec2(tex1.x, tex2.y);
@@ -570,11 +611,17 @@ SDL_bool geom_add_triple_quad_mesh(EsGeometry* geom, vec3 position, vec3 axis, f
     quads[0] = build_vec4ui(first_vertex+0, first_vertex+3, first_vertex+9, first_vertex+6);
     quads[1] = build_vec4ui(first_vertex+1, first_vertex+4, first_vertex+10, first_vertex+7);
     quads[2] = build_vec4ui(first_vertex+2, first_vertex+5, first_vertex+11, first_vertex+8);
+    vec4ui* cquads = (vec4ui*) SDL_malloc(3 * sizeof(vec4ui));
+    cquads[0] = build_vec4ui(first_color+0, first_color+3, first_color+9, first_color+6);
+    cquads[1] = build_vec4ui(first_color+1, first_color+4, first_color+10, first_color+7);
+    cquads[2] = build_vec4ui(first_color+2, first_color+5, first_color+11, first_color+8);
     for (Uint32 i=0; i<total_faces/2; i++) {
         faces[i*2 + 0].verts = build_vec3ui(quads[i].x, quads[i].z, quads[i].y);
         faces[i*2 + 1].verts = build_vec3ui(quads[i].x, quads[i].w, quads[i].z);
         faces[i*2 + 0].texs = build_vec3ui(first_texture+0, first_texture+2, first_texture+1);
         faces[i*2 + 1].texs = build_vec3ui(first_texture+0, first_texture+3, first_texture+2);
+        faces[i*2 + 0].cols = build_vec3ui(cquads[i].x, cquads[i].z, cquads[i].y);
+        faces[i*2 + 1].cols = build_vec3ui(cquads[i].x, cquads[i].w, cquads[i].z);
     }
     for (Uint32 i=0; i<total_faces; i++) {
         faces[i].norms = build_vec3ui(first_normal, first_normal, first_normal);
@@ -583,11 +630,14 @@ SDL_bool geom_add_triple_quad_mesh(EsGeometry* geom, vec3 position, vec3 axis, f
     SDL_memcpy(&geom->faces[first_face], faces, sizeof(EsFace)*total_faces);
     SDL_memcpy(&geom->textures[first_texture], textures, sizeof(vec2)*total_textures);
     SDL_memcpy(&geom->normals[first_normal], normals, sizeof(vec3)*total_normals);
+    SDL_memcpy(&geom->colors[first_color], colors, sizeof(vec3)*total_colors);
     SDL_free(vertices);
     SDL_free(faces);
     SDL_free(textures);
     SDL_free(normals);
+    SDL_free(colors);
     SDL_free(quads);
+    SDL_free(cquads);
     return SDL_TRUE;
 }
 

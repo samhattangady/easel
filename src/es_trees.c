@@ -10,7 +10,7 @@
 #define MINIMUM_DIST_RAYMARCH 0.01
 #define MAXIMUM_DIST_RAYMARCH 100.0
 
-SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rotation_axis, Uint32 depth, float parent_length, float parent_radius, float offset, Uint32 tree_root);
+SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rotation_axis, Uint32 depth, float parent_length, float parent_radius, float offset);
 EsCrossSection _trees_build_cs(float radius, vec3 position, vec3 axis, Uint32 depth, Uint32 num_children, Uint32 child1);
 float _get_var(EsVarFloat var);
 Uint32 _get_num_branches(EsTree* tree, Uint32 max_branches, float offset, float parent_length, float max_length, float child_length, Uint32 depth);
@@ -252,15 +252,17 @@ Uint32 _get_next_leaf(EsTree* tree) {
     return leaf_id;
 }
 
-SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rotation_axis, Uint32 depth, float parent_length, float parent_radius, float offset, Uint32 tree_root) {
+SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rotation_axis, Uint32 depth, float parent_length, float parent_radius, float offset) {
     Uint32 branch_root = _get_next_cs_id(tree);
     Uint32 root_index = _get_next_root(tree);
     if (depth == 0)
-        tree_root = root_index;
+        tree->tree_root = root_index;
     Uint32 num_segments = tree->params.curves_res[depth];
     tree->roots[root_index] = branch_root;
     Uint32 index = branch_root;
     float length = _get_branch_length(tree, depth, parent_length, offset);
+    if (depth == 0)
+        tree->tree_height = length;
     float base_radius;
     if (depth == 0)
         base_radius = length * tree->params.ratio * _get_var(tree->params.trunk_scale);
@@ -308,7 +310,7 @@ SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rot
             vec3 child_rotation_axis = vec3_cross(current_rotation, current_branch_axis);
             float down_angle = _get_down_angle(tree, param_ref_depth+1, length, child_offset);
             vec3 child_axis = rotate_about_origin_axis(current_rotation, down_angle, child_rotation_axis);
-            _trees_generate_branch(tree, child_pos, child_axis, child_rotation_axis, depth+1, length, base_radius, child_offset, tree_root);
+            _trees_generate_branch(tree, child_pos, child_axis, child_rotation_axis, depth+1, length, base_radius, child_offset);
         }
     }
     if (depth == tree->params.levels-1) {
@@ -316,13 +318,13 @@ SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rot
         Uint32 num_leaves = (Uint32) (tree->params.leaves * _shape_ratio(tree, 4, (offset/parent_length)));
         float branch_start = _get_branch_start_length(tree, length, param_ref_depth);
         float branch_end = length;
-        float tree_length = _get_branch_length(tree, 0, 0.0f, 0.0f);
+        float tree_length = tree->tree_height;
         EsBranchSDF branch;
         branch.main_pos = _lerp_branch(tree, branch_root, 0.5f * length);
         branch.main_radius = rand_pos() * length * 0.5f;
         branch.add1_pos = vec3_add(branch.main_pos, vec3_scale(rand_vec3(), branch.main_radius+rand_pos()));
         branch.add1_radius = rand_pos() * branch.main_radius * 0.5f;
-        branch.sub_pos = _lerp_branch(tree, tree_root, 0.5f * tree_length);
+        branch.sub_pos = _lerp_branch(tree, tree->tree_root, 0.5f * tree_length);
         branch.sub_radius = vec3_distance(branch.sub_pos, branch.main_pos) - (branch.main_radius*2.0f);
         branch.sub_radius -= 0.2f * branch.sub_radius * rand_pos();
         float leaf_length = tree->params.leaf_scale / SDL_sqrtf(tree->params.quality);
@@ -330,6 +332,7 @@ SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rot
         for (Uint32 i=0; i<num_leaves; i++) {
             Uint32 leaf_id = _get_next_leaf(tree);
             _add_leaf_on_branch(tree, &branch, leaf_id, leaf_width, leaf_length);
+            tree->leaves[leaf_id].branch_root = root_index;
         }
     }
     return SDL_TRUE;
@@ -447,27 +450,50 @@ EsTree trees_test(const char* objname) {
 }
 
 SDL_bool trees_generate(EsTree* tree) {
-    _trees_generate_branch(tree, build_vec3(0.0f, 0.0f, 0.0f), build_vec3(0.0f, 1.0f, 0.0f), build_vec3(0.0f, 0.0f, 1.0f), 0, 0.0, 0.0, 0.0, 0);
+    _trees_generate_branch(tree, build_vec3(0.0f, 0.0f, 0.0f), build_vec3(0.0f, 1.0f, 0.0f), build_vec3(0.0f, 0.0f, 1.0f), 0, 0.0, 0.0, 0.0);
     return SDL_TRUE;
 }
 
 SDL_bool trees_add_to_geom_at_pos(EsTree* tree, EsGeometry* geom, vec3 pos) {
+    float* branch_lengths = SDL_malloc(tree->num_roots * sizeof(float));
     for (Uint32 i=0; i<tree->num_roots; i++) {
         Uint32 current_cs = tree->roots[i];
+        float branch_length;
+        float branch_offset_start;
+        float branch_offset_end;
+        branch_offset_start = 0.0f;
+        branch_offset_end = 0.0f;
+        if (i != tree->tree_root) {
+            branch_length = 0.0f;
+            while (SDL_TRUE) {
+                if (tree->cross_sections[current_cs].num_children == 0)
+                    break;
+                EsCrossSection base = tree->cross_sections[current_cs];
+                EsCrossSection tip = tree->cross_sections[base.children[0]];
+                branch_length += vec3_distance(base.position, tip.position);
+                current_cs = base.children[0];
+            }
+            branch_lengths[i] = branch_length;
+            current_cs = tree->roots[i];
+        }
         while (SDL_TRUE) {
             if (tree->cross_sections[current_cs].num_children == 0)
                 break;
             EsCrossSection base = tree->cross_sections[current_cs];
             EsCrossSection tip = tree->cross_sections[base.children[0]];
-            geom_add_cs_surface(geom, base.radius, vec3_add(pos, base.position), base.axis, tip.radius, vec3_add(pos, tip.position), tip.axis, build_vec2(0.0, 0.0), 0);
+            if (i != tree->tree_root)
+                branch_offset_end = branch_offset_start + vec3_distance(base.position, tip.position)/branch_length; 
+            geom_add_cs_surface(geom, base.radius, vec3_add(pos, base.position), base.axis, tip.radius, vec3_add(pos, tip.position), tip.axis, build_vec2(0.0, 0.0), 0, tree->tree_height, branch_offset_start, branch_offset_end);
             current_cs = base.children[0];
+            if (i != tree->tree_root)
+                branch_offset_start = branch_offset_end;
         }
     }
     for (Uint32 i=0; i<tree->num_leaves; i++) {
         EsLeaf leaf = tree->leaves[i];
         if (vec3_is_zero(leaf.position))
             continue;
-        geom_add_triple_quad_mesh(geom, vec3_add(pos, leaf.position), leaf.axis, leaf.length, leaf.width, build_vec2(0.03, 0.03), build_vec2(1.0, 1.0), 0);
+        geom_add_triple_quad_mesh(geom, vec3_add(pos, leaf.position), leaf.axis, leaf.length, leaf.width, build_vec2(0.03, 0.03), build_vec2(1.0, 1.0), 0, tree->tree_height, branch_lengths[leaf.branch_root], tree->cross_sections[leaf.branch_root].position);
     }
     return SDL_TRUE;    
 }

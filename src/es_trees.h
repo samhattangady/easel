@@ -65,6 +65,7 @@ typedef struct {
     vec3 normal;
     float length;
     float width;
+    Uint32 branch_root;
 } EsLeaf;
 
 typedef struct {
@@ -89,6 +90,8 @@ typedef struct {
     Uint32 leaves_size;
     EsLeaf* leaves;
     EsTreeParams params;
+    float tree_height;
+    Uint32 tree_root;
 } EsTree;
 
 extern EsTree trees_test(const char* objname);

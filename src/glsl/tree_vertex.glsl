@@ -58,7 +58,7 @@ mat4 rotation_matrix_axis(float angle, vec3 axis) {
 }
 
 void main() {
-    vec4 pos = vec4(inPosition, 1.0f);
+    vec3 pos = inPosition;
     // vec4 base_obj_pos = vec4(inColor, 1.0f);
     // vec4 obj_pos = vec4(inColor, 1.0f);
     // obj_pos.x += (1.0-inTexCoord.y)/50.0 * sin(ubo.time*cos(noise(vec2(pos.x, pos.y)))*1.7);
@@ -71,9 +71,12 @@ void main() {
     // mat4 rotation_mat = rotation_matrix_axis(-angle_to_camera, vec3(0,1.0,0));
     // obj_pos = rotation_mat * obj_pos;
     // pos += obj_pos-base_obj_pos;
-    gl_Position = ubo.proj * ubo.view * ubo.model * pos;
+    pos += vec3(0.2, 0.0, 0.2) * inColor.x * sin(ubo.time); 
+    pos += vec3(0.1, 0.0, 0.0) * inColor.y * sin(ubo.time/2.0); 
+    pos += vec3(0.0, 0.0, 0.1) * inColor.z * sin(ubo.time/3.0); 
+    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);
     fragColor = inColor;
     fragTexCoord = inTexCoord;
     time = ubo.time;
-    outPos = vec4(pos.xyz, 1.0);
+    outPos = vec4(pos, inColor.z);
 }
