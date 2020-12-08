@@ -199,7 +199,7 @@ float vec3_magnitude(vec3 a) {
 
 float vec3_distance(vec3 a, vec3 b) {
     return vec3_magnitude(vec3_sub(a, b));
-};
+}
 
 float vec3_distance_squared(vec3 a, vec3 b) {
     return vec3_length_squared(vec3_sub(a, b));

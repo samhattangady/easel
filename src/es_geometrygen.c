@@ -144,6 +144,8 @@ Uint32 _geom_get_vertices_from_radius(float radius, Uint32 lod) {
     // float th = SDL_acosf(2 * SDL_powf((1 - error / radius), 2) - 1);
     // Uint32 num_vertices = (Uint32) SDL_ceilf(2* (float)M_PI/th);
     // return num_vertices;
+    lod += 1;
+    radius += 1.0f;
     return 3;
 }
 
@@ -443,6 +445,8 @@ SDL_bool geom_add_cs_surface(EsGeometry* geom, float base_radius, vec3 base_pos,
 }
 
 SDL_bool geom_add_oval(EsGeometry* geom, vec3 position, vec3 axis, vec3 normal, float length, float width, vec2 tex, Uint32 lod) {
+    lod += 1;
+    axis;
     Uint32 base_num_vertices = _geom_get_vertices_from_radius(width, lod);
     Uint32 total_vertices = base_num_vertices + 1;
     Uint32 total_faces = base_num_vertices;
@@ -528,6 +532,7 @@ SDL_bool geom_add_oval(EsGeometry* geom, vec3 position, vec3 axis, vec3 normal, 
 }
 
 SDL_bool geom_add_triple_quad_mesh(EsGeometry* geom, vec3 position, vec3 axis, float height, float width, vec2 tex1, vec2 tex2, Uint32 lod, float tree_height, float branch_length, vec3 branch_root_pos) {
+    lod += 1;
     Uint32 total_vertices = 12;
     Uint32 total_faces = 6;  // TODO (04 Dec 2020 sam): Figure out whether we need to make this double faced
     Uint32 total_textures = 4;
@@ -587,9 +592,9 @@ SDL_bool geom_add_triple_quad_mesh(EsGeometry* geom, vec3 position, vec3 axis, f
     if (vertices == NULL || faces == NULL || textures == NULL || normals == NULL || colors == NULL)
         SDL_Log("\n\n\nCOULD NOT ALLOC MEMORY\n\n\n");
     for (Uint32 i=0; i<6; i++) {
-        vertices[i] = rotate_about_origin_yaxis(build_vec3(width/2.0f, 0.0f, 0.0f), i/6.0f * 2.0f * M_PI);
+        vertices[i] = rotate_about_origin_yaxis(build_vec3(width/2.0f, 0.0f, 0.0f), i/6.0f * 2.0f * (float) M_PI);
         colors[i].z = 1.0f;
-        vertices[i+6] = rotate_about_origin_yaxis(build_vec3(width/2.0f, height, 0.0f), i/6.0f * 2.0f * M_PI);
+        vertices[i+6] = rotate_about_origin_yaxis(build_vec3(width/2.0f, height, 0.0f), i/6.0f * 2.0f * (float) M_PI);
         colors[i+6].z = 0.0f;
     }
     vec3 y_axis = build_vec3(0.0f, 1.0f, 0.0f);

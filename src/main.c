@@ -9,7 +9,6 @@ int main(int argc, char** argv) {
     argc; argv;
     SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
     SDL_bool result;
-    SDL_bool run_app = SDL_TRUE;
 
     EsPainter painter;
     EsWorld world;
