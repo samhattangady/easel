@@ -66,6 +66,7 @@ typedef struct {
     float length;
     float width;
     Uint32 branch_root;
+    Uint32 sdf_id;
 } EsLeaf;
 
 typedef struct {
@@ -89,6 +90,9 @@ typedef struct {
     Uint32 num_leaves;
     Uint32 leaves_size;
     EsLeaf* leaves;
+    Uint32 num_sdfs;
+    Uint32 sdfs_size;
+    EsBranchSDF* sdfs;
     EsTreeParams params;
     float tree_height;
     Uint32 tree_root;

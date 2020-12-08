@@ -1711,7 +1711,7 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     vertex_input_binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
     VkVertexInputBindingDescription vertex_binding_descriptions[1];
     vertex_binding_descriptions[0] = vertex_input_binding_description;
-    VkVertexInputAttributeDescription vertex_input_attributes[4];
+    VkVertexInputAttributeDescription vertex_input_attributes[5];
     vertex_input_attributes[0].location = 0;
     vertex_input_attributes[0].binding = 0;
     vertex_input_attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
@@ -1728,6 +1728,10 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     vertex_input_attributes[3].binding = 0;
     vertex_input_attributes[3].format = VK_FORMAT_R32G32B32_SFLOAT;
     vertex_input_attributes[3].offset = sizeof(vec3) + sizeof(vec3) + sizeof(vec2);
+    vertex_input_attributes[4].location = 4;
+    vertex_input_attributes[4].binding = 0;
+    vertex_input_attributes[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    vertex_input_attributes[4].offset = sizeof(vec3) + sizeof(vec3) + sizeof(vec2) + sizeof(vec3);
     VkPipelineShaderStageCreateInfo vertex_shader_stage_create_info;
     vertex_shader_stage_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     vertex_shader_stage_create_info.pNext = NULL;
@@ -1750,7 +1754,7 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     vertex_input_state_create_info.flags = 0;
     vertex_input_state_create_info.vertexBindingDescriptionCount = 1;
     vertex_input_state_create_info.pVertexBindingDescriptions = vertex_binding_descriptions;
-    vertex_input_state_create_info.vertexAttributeDescriptionCount = 4;
+    vertex_input_state_create_info.vertexAttributeDescriptionCount = 5;
     vertex_input_state_create_info.pVertexAttributeDescriptions = vertex_input_attributes;
     VkPipelineInputAssemblyStateCreateInfo input_assembly_state_create_info;
     input_assembly_state_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;

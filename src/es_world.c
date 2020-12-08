@@ -1,13 +1,13 @@
 #include "es_world.h"
 
-#define MOVE_SPEED 0.002f
+#define MOVE_SPEED 0.006f
 
 SDL_bool world_init(EsWorld* w) {
     w->running = SDL_TRUE;
     w->position = build_vec3(0.0f, 8.0f, 35.0f);
     w->target = build_vec3(0.0f, 4.0f, 0.0f);
     w->up_axis = build_vec3(0.0f, 1.0f, 0.0f);
-    SDL_SetRelativeMouseMode(SDL_TRUE);
+    // SDL_SetRelativeMouseMode(SDL_TRUE);
     w->controls.up_pressed = SDL_FALSE;
     w->controls.down_pressed = SDL_FALSE;
     w->controls.left_pressed = SDL_FALSE;
@@ -33,8 +33,10 @@ SDL_bool world_update(EsWorld* w) {
     // TODO (03 Dec 2020 sam): Normalize when moving forward and side.
     w->position = vec3_add(w->position, movement);
     w->target = vec3_add(w->target, movement);
-    float angle = -w->mouse.moved_x / 768.0f;
-    w->target = rotate_about_anchor_axis(w->target, w->position, angle, w->up_axis);
+    float x_angle = -w->mouse.moved_x / 768.0f;
+    w->target = rotate_about_anchor_axis(w->target, w->position, x_angle, w->up_axis);
+    float y_angle = w->mouse.moved_y / 1024.0f;
+    w->target = rotate_about_anchor_axis(w->target, w->position, y_angle, vec3_cross(w->up_axis, vec3_sub(w->target, w->position)));
     return SDL_TRUE;
 }
 

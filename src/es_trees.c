@@ -72,7 +72,7 @@ SDL_bool _add_leaf_on_branch(EsTree* tree, EsBranchSDF* branch, Uint32 leaf_id, 
    vec3 start = vec3_add(branch->main_pos, vec3_scale(rand_vec3(), branch->main_radius*5.0f));
    vec3 dir = vec3_normalize(vec3_sub(branch->main_pos, start));
    tree->leaves[leaf_id].position = _raymarch(start, dir, branch);
-   tree->leaves[leaf_id].axis = vec3_scale(dir, -1.0f);
+   tree->leaves[leaf_id].axis = rand_vec3();
    tree->leaves[leaf_id].length = leaf_length;
    tree->leaves[leaf_id].width = leaf_width;
    return SDL_TRUE;
@@ -254,6 +254,23 @@ Uint32 _get_next_leaf(EsTree* tree) {
     return leaf_id;
 }
 
+Uint32 _get_next_branch(EsTree* tree) {
+    Uint32 sdf_id = tree->num_sdfs;
+    tree->num_sdfs++;
+    // SDL_Log("rootid = %i\n", root_id);
+    if (tree->num_sdfs == tree->sdfs_size) {
+        Uint32 new_size = tree->sdfs_size * 2;
+        EsBranchSDF* new_r = (EsBranchSDF*) SDL_realloc(tree->sdfs, new_size*sizeof(EsBranchSDF));
+        if (new_r == NULL) {
+            SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Could not realloc sdfs\n");
+            exit(-1);
+        }
+        tree->sdfs = new_r;
+        tree->sdfs_size = new_size;
+    }
+    return sdf_id;
+}
+
 SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rotation_axis, Uint32 depth, float parent_length, float parent_radius, float offset) {
     Uint32 branch_root = _get_next_cs_id(tree);
     Uint32 root_index = _get_next_root(tree);
@@ -320,18 +337,21 @@ SDL_bool _trees_generate_branch(EsTree* tree, vec3 position, vec3 axis, vec3 rot
         float tree_length = tree->tree_height;
         EsBranchSDF branch;
         branch.main_pos = _lerp_branch(tree, branch_root, 0.5f * length);
-        branch.main_radius = rand_pos() * length * 0.5f;
+        branch.main_radius = length*0.5f + rand_negpos() * 0.1f;
         branch.add1_pos = vec3_add(branch.main_pos, vec3_scale(rand_vec3(), branch.main_radius+rand_pos()));
         branch.add1_radius = rand_pos() * branch.main_radius * 0.5f;
         branch.sub_pos = _lerp_branch(tree, tree->tree_root, 0.5f * tree_length);
         branch.sub_radius = vec3_distance(branch.sub_pos, branch.main_pos) - (branch.main_radius*2.0f);
         branch.sub_radius -= 0.2f * branch.sub_radius * rand_pos();
+        Uint32 branch_id = _get_next_branch(tree);
+        tree->sdfs[branch_id] = branch;
         float leaf_length = tree->params.leaf_scale / SDL_sqrtf(tree->params.quality);
         float leaf_width = tree->params.leaf_scale * tree->params.leaf_scale_x / SDL_sqrtf(tree->params.quality);
         for (Uint32 i=0; i<num_leaves; i++) {
             Uint32 leaf_id = _get_next_leaf(tree);
             _add_leaf_on_branch(tree, &branch, leaf_id, leaf_width, leaf_length);
             tree->leaves[leaf_id].branch_root = root_index;
+            tree->leaves[leaf_id].sdf_id = branch_id;
         }
     }
     return SDL_TRUE;
@@ -418,7 +438,7 @@ extern EsTree trees_gen_test() {
     tree.params.seg_splits[3] = 0;
     tree.params.split_angles[3].val = 0.3f;
     tree.params.split_angles[3].val_v = 0;
-    tree.params.leaves = 55;
+    tree.params.leaves = 35;
     tree.params.leaf_shape = 0;
     tree.params.leaf_scale = 0.57f;
     tree.params.leaf_scale_x = 1.0f;
@@ -437,6 +457,9 @@ extern EsTree trees_gen_test() {
     tree.num_leaves = 0;
     tree.leaves_size = TREES_DEFAULT_LEAVES;
     tree.leaves = (EsLeaf*) SDL_malloc(tree.leaves_size * sizeof(EsLeaf));
+    tree.num_sdfs = 0;
+    tree.sdfs_size = TREES_DEFAULT_ROOTS;
+    tree.sdfs = (EsBranchSDF*) SDL_malloc(tree.sdfs_size * sizeof(EsBranchSDF));
     
     trees_generate(&tree);
     return tree;
@@ -497,7 +520,7 @@ SDL_bool trees_add_to_geom_at_pos(EsTree* tree, EsGeometry* geom, vec3 pos) {
         EsLeaf leaf = tree->leaves[i];
         if (vec3_is_zero(leaf.position))
             continue;
-        geom_add_triple_quad_mesh(geom, vec3_add(pos, leaf.position), leaf.axis, leaf.length, leaf.width, build_vec2(0.03f, 0.03f), build_vec2(1.0f, 1.0f), 0, tree->tree_height, branch_lengths[leaf.branch_root], tree->cross_sections[leaf.branch_root].position);
+        geom_add_triple_quad_mesh(geom, vec3_add(pos, leaf.position), leaf.axis, leaf.length, leaf.width, build_vec2(0.03f, 0.03f), build_vec2(1.0f, 1.0f), 0, tree->tree_height, vec3_distance(tree->cross_sections[leaf.branch_root].position, tree->sdfs[leaf.sdf_id].main_pos), tree->cross_sections[leaf.branch_root].position);
     }
     return SDL_TRUE;    
 }

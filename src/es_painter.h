@@ -17,6 +17,7 @@ typedef struct {
     vec3 color;
     vec2 tex;
     vec3 normal;
+    vec4 assorted;
 } EsVertex;
 
 typedef struct {

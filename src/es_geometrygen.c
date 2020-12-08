@@ -593,9 +593,9 @@ SDL_bool geom_add_triple_quad_mesh(EsGeometry* geom, vec3 position, vec3 axis, f
         SDL_Log("\n\n\nCOULD NOT ALLOC MEMORY\n\n\n");
     for (Uint32 i=0; i<6; i++) {
         vertices[i] = rotate_about_origin_yaxis(build_vec3(width/2.0f, 0.0f, 0.0f), i/6.0f * 2.0f * (float) M_PI);
-        colors[i].z = 1.0f;
+        colors[i].z = 0.0f;
         vertices[i+6] = rotate_about_origin_yaxis(build_vec3(width/2.0f, height, 0.0f), i/6.0f * 2.0f * (float) M_PI);
-        colors[i+6].z = 0.0f;
+        colors[i+6].z = 1.0f;
     }
     vec3 y_axis = build_vec3(0.0f, 1.0f, 0.0f);
     axis = vec3_normalize(axis);

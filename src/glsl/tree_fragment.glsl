@@ -7,7 +7,8 @@ layout(binding = 1) uniform sampler2D texSampler;
 layout(location = 0) in vec3 fragColor;
 layout(location = 1) in vec2 fragTexCoord;
 layout(location = 2) in float time;
-layout(location = 3) in vec4 inPos;
+layout(location = 3) in vec3 inPos;
+layout(location = 4) in vec3 inColor;
 
 layout(location = 0) out vec4 outColor;
 
@@ -33,15 +34,25 @@ vec2 rotate(vec2 point, float angle) {
 }
 
 void main() {
+    if (inColor.x > (time-1.0)/3.0)
+        discard;
+    if (inColor.y > max(0.001,(time-2.0))/3.0)
+        discard;
+    if (inColor.z > max(0.001,(time-3.5))/3.0)
+        discard;
     vec2 texCoord = fragTexCoord;
     // TODO (07 Dec 2020 sam): See how this can be improved
-    if (texCoord.x > 0) {
-        texCoord = rotate(texCoord, distance(texCoord, vec2(0.0)) * sin(time*1.7) * noise(inPos.xz) * 3.1415/8.0f);
-    }
+    // if (texCoord.x > 0) {
+    //     texCoord = rotate(texCoord, distance(texCoord, vec2(0.0)) * sin(time*1.7) * noise(inPos.xz) * 3.1415/8.0f);
+    // }
     vec4 col = texture(texSampler, texCoord);
     if (col.a < 0.3)
         discard;
-    col = mix(col, col*0.5, inPos.w);
-    // col = inPos;
+    float leaf_tint = 1.0;
+    if (texCoord.x > 0) {
+        leaf_tint = inColor.z;
+    }
+    col = mix(col, col*0.5, 1.0-leaf_tint);
+    // col = vec4(inColor, 1.0);
     outColor = col;
 }
