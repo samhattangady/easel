@@ -1,8 +1,6 @@
 #include <stdlib.h>
 #include "es_warehouse.h"
 
-#define BASE_STRING_LENGTH 1024
-
 float rand_pos() {
     return (float) rand() / (float) RAND_MAX;
 }

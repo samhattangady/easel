@@ -101,8 +101,8 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         grass_shader.vertices[face.v_idx].tex.y = attrib.texcoords[face.vt_idx*2 + 1];
     }
     for (Uint32 i=1; i<GRASS_INSTANCES; i++) {
-        float x = (((float) rand() / (float) RAND_MAX) - 0.5f) * GRASS_RADIUS*2.0f;
-        float z = (((float) rand() / (float) RAND_MAX) - 0.5f) * GRASS_RADIUS*2.0f;
+        float x = rand_negpos() * GRASS_RADIUS;
+        float z = rand_negpos() * GRASS_RADIUS;
         if (vec3_magnitude(build_vec3(x,0,z)) > GRASS_RADIUS) {
             i--;
             continue;
@@ -162,8 +162,8 @@ SDL_bool _painter_load_data(EsPainter* painter) {
 
     EsGeometry tree = geom_init_geometry_size(300000, 700000, 2, 300000, 0);
     for (Uint32 i=0; i<TREE_INSTANCES; i++) {
-        float x = (((float) rand() / (float) RAND_MAX) - 0.5f) * GRASS_RADIUS*2.0f;
-        float z = (((float) rand() / (float) RAND_MAX) - 0.5f) * GRASS_RADIUS*2.0f;
+        float x = rand_negpos() * GRASS_RADIUS;
+        float z = rand_negpos() * GRASS_RADIUS;
         if (i == 0) {
             x = 0.0f;
             z = 0.0f;

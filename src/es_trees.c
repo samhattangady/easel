@@ -89,7 +89,7 @@ EsCrossSection _trees_build_cs(float radius, vec3 position, vec3 axis, Uint32 de
 }
 
 float _get_var(EsVarFloat var) {
-    return var.val + (((float) rand() / (float) RAND_MAX) - 0.5f) * 2.0f * var.val_v;
+    return var.val + rand_negpos() * var.val_v;
 }
 
 float _shape_ratio(EsTree* tree, Uint32 shape, float ratio) {
@@ -192,7 +192,7 @@ float _get_down_angle(EsTree* tree, Uint32 depth, float parent_length, float off
     if (var.val_v > 0)
         down_angle = -deg_to_rad(_get_var(tree->params.down_angles[depth]));
     else {
-        float valv = (((float) rand() / (float) RAND_MAX) - 0.5f) * 2.0f * var.val_v;
+        float valv = rand_negpos() * var.val_v;
         float base_length = tree->params.base_size * parent_length;
         float ratio = (parent_length-offset) / (parent_length-base_length);
         down_angle = var.val + (valv * (1.0f - (2.0f * _shape_ratio(tree, 0, ratio))));
