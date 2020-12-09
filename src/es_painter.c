@@ -160,6 +160,12 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     tinyobj_shapes_free(shapes, num_shapes);
     tinyobj_materials_free(materials, num_materials);
 
+    tree_shader.num_vertices = 100000;
+    tree_shader.vertices = (EsVertex*) SDL_malloc(tree_shader.num_vertices * sizeof(EsVertex));
+    tree_shader.num_indices = 1000000;
+    tree_shader.indices = (Uint32*) SDL_malloc(tree_shader.num_indices * sizeof(Uint32));
+
+    /*
     EsGeometry tree = geom_init_geometry_size(300000, 700000, 2, 300000, 0);
     for (Uint32 i=0; i<TREE_INSTANCES; i++) {
         float x = rand_negpos() * GRASS_RADIUS;
@@ -211,6 +217,7 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         tree_shader.indices[i*3 + 1] = face.verts.y;
         tree_shader.indices[i*3 + 2] = face.verts.z;
     }
+    */
 
     ground_shader.num_vertices = (GROUND_NUM_VERTICES_SIDE+1) * (GROUND_NUM_VERTICES_SIDE+1);
     ground_shader.vertices = (EsVertex*) SDL_malloc(ground_shader.num_vertices * sizeof(EsVertex));
@@ -289,6 +296,13 @@ SDL_bool painter_initialise(EsPainter* painter) {
 
     painter->frame_index = 0;
     painter->buffer_resized = SDL_FALSE;
+
+    SDL_free(painter->shaders[0].vertices);
+    SDL_free(painter->shaders[1].vertices);
+    SDL_free(painter->shaders[2].vertices);
+    SDL_free(painter->shaders[0].indices);
+    SDL_free(painter->shaders[1].indices);
+    SDL_free(painter->shaders[2].indices);
 
     return SDL_TRUE;
 }
@@ -394,6 +408,11 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     Uint32 image_index;
     VkResult result;
     SDL_bool sdl_result;
+
+    if (painter->world->refresh_tree) {
+        SDL_Log("reloading tree buffer\n");
+        sdl_result = _painter_load_buffer_from_geom(painter, &painter->world->tree_geom, &painter->shaders[0]);
+    }
 
     vkWaitForFences(painter->device, 1, &painter->in_flight_fences[painter->frame_index], VK_TRUE, UINT64_MAX);
     result = vkAcquireNextImageKHR(painter->device, painter->swapchain, UINT64_MAX, painter->image_available_semaphores[painter->frame_index], VK_NULL_HANDLE, &image_index);

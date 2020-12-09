@@ -29,7 +29,53 @@ extern SDL_bool _painter_load_cubemap_and_sampler(EsPainter* painter, const char
 extern SDL_bool _painter_create_framebuffers(EsPainter* painter);
 extern SDL_bool _painter_create_descriptor_sets(EsPainter* painter, ShaderData* shader);
 extern SDL_bool _painter_init_shader_data(EsPainter* painter, ShaderData* shader, SDL_bool is_skybox);
+extern SDL_bool _painter_load_buffer_from_geom(EsPainter* painter, EsGeometry* geom, ShaderData* shader);
 SDL_bool _painter_create_swapchain(EsPainter* painter);
+
+SDL_bool _painter_load_buffer_from_geom(EsPainter* painter, EsGeometry* geom, ShaderData* shader) {
+    SDL_bool sdl_result;
+    shader->num_vertices = geom->num_vertices;
+    shader->vertices = (EsVertex*) SDL_malloc(shader->num_vertices * sizeof(EsVertex));
+    shader->num_indices = geom->num_faces * 3;
+    shader->indices = (Uint32*) SDL_malloc(shader->num_indices * sizeof(Uint32));
+    shader->vertex_staging_buffer_size = shader->num_vertices * sizeof(EsVertex);
+    shader->index_staging_buffer_size = shader->num_indices * sizeof(Uint32);
+    for (Uint32 i=0; i<geom->num_vertices; i++) {
+        EsVertex vert;
+        vert.pos = geom->vertices[i];
+        vert.color.x = 0.0;
+        vert.color.y = 0.0;
+        vert.color.z = 0.0;
+        shader->vertices[i] = vert;
+    }
+    for (Uint32 i=0; i<geom->num_faces; i++) {
+        EsFace face = geom->faces[i];
+        EsVertex vert_x = shader->vertices[face.verts.x];
+        EsVertex vert_y = shader->vertices[face.verts.y];
+        EsVertex vert_z = shader->vertices[face.verts.z];
+        vert_x.tex = geom->textures[face.texs.x];
+        vert_y.tex = geom->textures[face.texs.y];
+        vert_z.tex = geom->textures[face.texs.z];
+        vert_x.normal = geom->normals[face.norms.x];
+        vert_y.normal = geom->normals[face.norms.y];
+        vert_z.normal = geom->normals[face.norms.z];
+        vert_x.color = geom->colors[face.cols.x];
+        vert_y.color = geom->colors[face.cols.y];
+        vert_z.color = geom->colors[face.cols.z];
+        shader->vertices[face.verts.x] = vert_x;
+        shader->vertices[face.verts.y] = vert_y;
+        shader->vertices[face.verts.z] = vert_z;
+        shader->indices[i*3 + 0] = face.verts.x;
+        shader->indices[i*3 + 1] = face.verts.y;
+        shader->indices[i*3 + 2] = face.verts.z;
+    }
+
+    sdl_result = _painter_load_buffer_via_staging(painter, shader->vertices, &shader->vertex_staging_buffer_memory, &shader->vertex_staging_buffer, &shader->vertex_buffer, shader->vertex_staging_buffer_size);
+    if (!sdl_result) _painter_cleanup_error(painter, "Could not copy vertices to buffer.", shader->shader_name);
+    sdl_result = _painter_load_buffer_via_staging(painter, shader->indices, &shader->index_staging_buffer_memory, &shader->index_staging_buffer, &shader->index_buffer, shader->index_staging_buffer_size);
+    if (!sdl_result) _painter_cleanup_error(painter, "Could not copy indices to buffer.", shader->shader_name);
+    return SDL_TRUE;
+}
 
 SDL_bool _painter_create_framebuffers(EsPainter* painter) {
     VkResult result;

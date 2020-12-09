@@ -9,10 +9,14 @@
 
 #include "SDL.h"
 #include "es_warehouse.h"
+#include "es_geometrygen.h"
+#include "es_trees.h"
 
 typedef struct {
-    SDL_bool l_pressed;
-    SDL_bool r_pressed;
+    SDL_bool l_down;
+    SDL_bool r_down;
+    SDL_bool l_pressed; // set for just the one tick where it was released
+    SDL_bool r_pressed; // set for just the one tick where it was released
     SDL_bool l_released; // set for just the one tick where it was released
     SDL_bool r_released; // set for just the one tick where it was released
     float l_down_x;
@@ -26,10 +30,10 @@ typedef struct {
 } MouseData;
 
 typedef struct {
-    SDL_bool up_pressed;
-    SDL_bool down_pressed;
-    SDL_bool left_pressed;
-    SDL_bool right_pressed;
+    SDL_bool up_down;
+    SDL_bool down_down;
+    SDL_bool left_down;
+    SDL_bool right_down;
 } ControlsData;
 
 typedef struct {
@@ -39,6 +43,8 @@ typedef struct {
     vec3 up_axis;
     MouseData mouse;
     ControlsData controls;
+    EsGeometry tree_geom;
+    SDL_bool refresh_tree;
 } EsWorld;
 
 extern SDL_bool world_init(EsWorld* w);
