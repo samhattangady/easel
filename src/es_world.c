@@ -7,7 +7,7 @@ SDL_bool world_init(EsWorld* w) {
     w->position = build_vec3(0.0f, 8.0f, 35.0f);
     w->target = build_vec3(0.0f, 4.0f, 0.0f);
     w->up_axis = build_vec3(0.0f, 1.0f, 0.0f);
-    // SDL_SetRelativeMouseMode(SDL_TRUE);
+    SDL_SetRelativeMouseMode(SDL_TRUE);
     w->controls.up_pressed = SDL_FALSE;
     w->controls.down_pressed = SDL_FALSE;
     w->controls.left_pressed = SDL_FALSE;

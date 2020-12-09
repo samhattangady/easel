@@ -12,7 +12,7 @@
 
 #include <stdlib.h>
 
-#define GRASS_INSTANCES 2
+#define GRASS_INSTANCES 2005
 #define GRASS_NUM_VERTICES 4
 #define GRASS_MODEL_PATH "data/obj/grass3.obj"
 #define GRASS_MODEL_TEXTURE_PATH "data/img/grass4.png"
