@@ -12,6 +12,7 @@
 #include "es_geometrygen.h"
 #include "es_trees.h"
 
+
 typedef struct {
     SDL_bool l_down;
     SDL_bool r_down;

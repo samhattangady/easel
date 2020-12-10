@@ -520,7 +520,7 @@ SDL_bool trees_add_to_geom_at_pos(EsTree* tree, EsGeometry* geom, vec3 pos) {
         EsLeaf leaf = tree->leaves[i];
         if (vec3_is_zero(leaf.position))
             continue;
-        geom_add_triple_quad_mesh(geom, vec3_add(pos, leaf.position), leaf.axis, leaf.length, leaf.width, build_vec2(0.03f, 0.03f), build_vec2(1.0f, 1.0f), 0, tree->tree_height, vec3_distance(tree->cross_sections[leaf.branch_root].position, tree->sdfs[leaf.sdf_id].main_pos), tree->cross_sections[leaf.branch_root].position);
+        geom_add_triple_quad_mesh(geom, vec3_add(pos, leaf.position), leaf.axis, leaf.length, leaf.width, build_vec2(0.03f, 0.03f), build_vec2(1.0f, 1.0f), 0, tree->tree_height, vec3_distance(tree->cross_sections[leaf.branch_root].position, tree->sdfs[leaf.sdf_id].main_pos), vec3_add(pos, tree->cross_sections[leaf.branch_root].position));
     }
     return SDL_TRUE;    
 }

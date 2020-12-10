@@ -34,6 +34,12 @@ SDL_bool _painter_create_swapchain(EsPainter* painter);
 
 SDL_bool _painter_load_buffer_from_geom(EsPainter* painter, EsGeometry* geom, ShaderData* shader) {
     SDL_bool sdl_result;
+    // TODO (09 Dec 2020 sam): We should be reallocating memory and buffers if there is not enought
+    // memory available.
+    if (geom->num_vertices > 100000 || geom->num_faces*3 > 1000000) {
+        SDL_Log("Not enough memory. Sorry");
+        return SDL_FALSE;
+    }
     shader->num_vertices = geom->num_vertices;
     shader->vertices = (EsVertex*) SDL_malloc(shader->num_vertices * sizeof(EsVertex));
     shader->num_indices = geom->num_faces * 3;
@@ -74,6 +80,9 @@ SDL_bool _painter_load_buffer_from_geom(EsPainter* painter, EsGeometry* geom, Sh
     if (!sdl_result) _painter_cleanup_error(painter, "Could not copy vertices to buffer.", shader->shader_name);
     sdl_result = _painter_load_buffer_via_staging(painter, shader->indices, &shader->index_staging_buffer_memory, &shader->index_staging_buffer, &shader->index_buffer, shader->index_staging_buffer_size);
     if (!sdl_result) _painter_cleanup_error(painter, "Could not copy indices to buffer.", shader->shader_name);
+    SDL_free(shader->vertices);
+    SDL_free(shader->indices);
+
     return SDL_TRUE;
 }
 
@@ -886,6 +895,7 @@ SDL_bool _painter_init_instance(EsPainter* painter) {
     app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
     app_info.pEngineName = "chapliboy engine";
     app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+    // TODO (09 Dec 2020 sam): Check whether version 1.1 is available and use that
     app_info.apiVersion = VK_API_VERSION_1_0;
 
 #if DEBUG_BUILD==SDL_TRUE
