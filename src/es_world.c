@@ -8,7 +8,9 @@ SDL_bool world_init(EsWorld* w) {
     w->position = build_vec3(0.0f, 8.0f, 35.0f);
     w->target = build_vec3(0.0f, 4.0f, 0.0f);
     w->up_axis = build_vec3(0.0f, 1.0f, 0.0f);
-    SDL_SetRelativeMouseMode(SDL_TRUE);
+    // TODO (15 Dec 2020 sam): For some reason this stopped working. Works till commit 1f5810444a27b03c9e9903fba99c17f6d806509b
+    int result = SDL_SetRelativeMouseMode(SDL_TRUE);
+    SDL_Log("Relavive mouse = %i", result);
     w->controls.up_down = SDL_FALSE;
     w->controls.down_down = SDL_FALSE;
     w->controls.left_down = SDL_FALSE;

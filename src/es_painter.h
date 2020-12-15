@@ -11,14 +11,14 @@
 #include "es_geometrygen.h"
 #include "es_trees.h"
 #include "es_world.h"
+#include "es_ui.h"
 
-typedef struct {
-    vec3 pos;
-    vec3 color;
-    vec2 tex;
-    vec3 normal;
-    vec4 assorted;
-} EsVertex;
+typedef enum {
+    MODEL_SHADER,
+    SKYBOX_SHADER,
+    UI_SHADER,
+    SHADERTYPE_COUNT,
+} ShaderType;
 
 typedef struct {
     mat4 model;
@@ -101,9 +101,11 @@ typedef struct {
     float camera_fov;
     Uint32 start_time;
     ShaderData* skybox_shader;
+    ShaderData* ui_shader;
     Uint32 num_shaders;
     ShaderData* shaders;
     EsWorld* world;
+    EsUI* ui;
 } EsPainter;
 
 extern SDL_bool painter_initialise(EsPainter* painter);

@@ -48,10 +48,13 @@ typedef struct {
     vec4 d;
 } mat4;
 
-typedef struct string {
-    char* text;
-    Uint32 memory_allotted;
-} string;
+typedef struct {
+    vec3 pos;
+    vec3 color;
+    vec2 tex;
+    vec3 normal;
+    vec4 assorted;
+} EsVertex;
 
 extern void warehouse_error_popup(const char* error_header, const char* error_text);
 extern float warehouse_log_2(float num);

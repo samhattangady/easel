@@ -10,7 +10,7 @@ extern SDL_bool _painter_create_image(EsPainter* painter, Uint32 width, Uint32 h
 extern SDL_bool _painter_create_image_view(EsPainter* painter, VkFormat format, VkImageAspectFlags aspect_flags, VkImageViewType image_view_type, Uint32 mip_levels, VkImage* image, VkImageView* image_view);
 extern VkCommandBuffer _painter_begin_single_use_command_buffer(EsPainter* painter);
 extern SDL_bool _painter_end_single_use_command_buffer(EsPainter* painter, VkCommandBuffer* command_buffer);
-extern SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat image_format, Uint32 width, Uint32 height, Uint32 mip_levels, SDL_bool is_cubemap);
+extern SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat image_format, Uint32 width, Uint32 height, Uint32 mip_levels, ShaderType shader_type);
 extern SDL_bool _painter_initialise_sdl_window(EsPainter* painter, const char* window_name);
 extern SDL_bool _painter_init_instance(EsPainter* painter);
 extern SDL_bool _painter_select_physical_device(EsPainter* painter);
@@ -24,11 +24,11 @@ extern void _painter_read_obj_file(const char* filename, const int is_mtl, const
 extern SDL_bool _painter_swapchain_renderpass_init(EsPainter* painter);
 extern SDL_bool _painter_custom_error(const char* header, const char* message);
 extern SDL_bool _painter_cleanup_error(EsPainter* painter, const char* header, const char* message);
-extern SDL_bool _painter_load_image_and_sampler(EsPainter* painter, const char* filepath, ShaderData* shader);
+extern SDL_bool _painter_load_image_and_sampler(EsPainter* painter, const char* filepath, ShaderData* shader, Uint8* memory, int width, int height, int channels, SDL_bool from_memory, ShaderType shader_type);
 extern SDL_bool _painter_load_cubemap_and_sampler(EsPainter* painter, const char* filepath0, const char* filepath1, const char* filepath2, const char* filepath3, const char* filepath4, const char* filepath5, ShaderData* shader);
 extern SDL_bool _painter_create_framebuffers(EsPainter* painter);
 extern SDL_bool _painter_create_descriptor_sets(EsPainter* painter, ShaderData* shader);
-extern SDL_bool _painter_init_shader_data(EsPainter* painter, ShaderData* shader, SDL_bool is_skybox);
+extern SDL_bool _painter_init_shader_data(EsPainter* painter, ShaderData* shader, ShaderType type);
 extern SDL_bool _painter_load_buffer_from_geom(EsPainter* painter, EsGeometry* geom, ShaderData* shader);
 SDL_bool _painter_create_swapchain(EsPainter* painter);
 
@@ -227,7 +227,7 @@ SDL_bool _painter_load_cubemap_and_sampler(EsPainter* painter, const char* filep
     if (!sdl_result) return SDL_FALSE;
     vkDestroyBuffer(painter->device, tex_buffer, NULL);
     vkFreeMemory(painter->device, tex_buffer_memory, NULL);
-    sdl_result = _painter_generate_mipmaps(painter, &shader->texture_image, VK_FORMAT_R8G8B8A8_SRGB, tex_width, tex_height, shader->mip_levels, SDL_TRUE);
+    sdl_result = _painter_generate_mipmaps(painter, &shader->texture_image, VK_FORMAT_R8G8B8A8_SRGB, tex_width, tex_height, shader->mip_levels, SKYBOX_SHADER);
     if (!sdl_result) return SDL_FALSE;
     sdl_result = _painter_create_image_view(painter, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_CUBE, shader->mip_levels, &shader->texture_image, &shader->texture_image_view);
     if (!sdl_result) {
@@ -263,7 +263,7 @@ SDL_bool _painter_load_cubemap_and_sampler(EsPainter* painter, const char* filep
     return SDL_TRUE;
 }
 
-extern SDL_bool _painter_load_image_and_sampler(EsPainter* painter, const char* filepath, ShaderData* shader) {
+extern SDL_bool _painter_load_image_and_sampler(EsPainter* painter, const char* filepath, ShaderData* shader, Uint8* memory, int width, int height, int channels, SDL_bool from_memory, ShaderType shader_type) {
     VkResult result;
     SDL_bool sdl_result;
     int tex_width;
@@ -275,14 +275,23 @@ extern SDL_bool _painter_load_image_and_sampler(EsPainter* painter, const char* 
     VkDeviceSize tex_size;
     stbi_uc* pixels;
 
-    pixels = stbi_load(filepath, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
-    if (!pixels) {
-        warehouse_error_popup("Error in Vulkan Setup.", "Could not load texture");
-        painter_cleanup(painter);
-        return SDL_FALSE;
+    SDL_Log("loading image data");
+    if (!from_memory) {
+        pixels = stbi_load(filepath, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+        if (!pixels) {
+            warehouse_error_popup("Error in Vulkan Setup.", "Could not load texture");
+            painter_cleanup(painter);
+            return SDL_FALSE;
+        }
+    } else {
+        tex_width = width;
+        tex_height = height;
+        tex_channels = channels;
+        pixels = (stbi_uc*) memory;
     }
     shader->mip_levels = (Uint32) (SDL_floor(warehouse_log_2(SDL_max((float) tex_width, (float) tex_height))) + 1.0f);
-    tex_size = tex_width * tex_height * 4;
+    tex_size = tex_width * tex_height * tex_channels;
+    SDL_Log("loading image data");
     sdl_result = _painter_create_buffer(painter, tex_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &tex_buffer, &tex_buffer_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture buffer");
@@ -292,19 +301,30 @@ extern SDL_bool _painter_load_image_and_sampler(EsPainter* painter, const char* 
     vkMapMemory(painter->device, tex_buffer_memory, 0, tex_size, 0, &tex_data);
     SDL_memcpy(tex_data, pixels, tex_size);
     vkUnmapMemory(painter->device, tex_buffer_memory);
-    stbi_image_free(pixels);
+    if (!from_memory)
+        stbi_image_free(pixels);
 
-    sdl_result = _painter_create_image(painter, tex_width, tex_height, shader->mip_levels, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &shader->texture_image, &shader->texture_image_memory, 1, SDL_FALSE);
+    VkFormat image_format;
+    if (tex_channels == 4)
+        image_format = VK_FORMAT_R8G8B8A8_SRGB;
+    else if (tex_channels == 1)
+        image_format = VK_FORMAT_R8_SRGB;
+    SDL_Log("Creating image");
+    sdl_result = _painter_create_image(painter, tex_width, tex_height, shader->mip_levels, VK_SAMPLE_COUNT_1_BIT, image_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &shader->texture_image, &shader->texture_image_memory, 1, SDL_FALSE);
     if (!sdl_result) return SDL_FALSE;
-    sdl_result = _painter_transition_image_layout(painter, &shader->texture_image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, shader->mip_levels, 1);
+    SDL_Log("Transitioning image");
+    sdl_result = _painter_transition_image_layout(painter, &shader->texture_image, image_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, shader->mip_levels, 1);
     if (!sdl_result) return SDL_FALSE;
+    SDL_Log("Copying image to buffer");
     sdl_result = _painter_copy_buffer_to_image(painter, &tex_buffer, &shader->texture_image, tex_width, tex_height);
     if (!sdl_result) return SDL_FALSE;
     vkDestroyBuffer(painter->device, tex_buffer, NULL);
     vkFreeMemory(painter->device, tex_buffer_memory, NULL);
-    sdl_result = _painter_generate_mipmaps(painter, &shader->texture_image, VK_FORMAT_R8G8B8A8_SRGB, tex_width, tex_height, shader->mip_levels, SDL_FALSE);
+    SDL_Log("Generating mipmap");
+    sdl_result = _painter_generate_mipmaps(painter, &shader->texture_image, image_format, tex_width, tex_height, shader->mip_levels, shader_type);
     if (!sdl_result) return SDL_FALSE;
-    sdl_result = _painter_create_image_view(painter, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, shader->mip_levels, &shader->texture_image, &shader->texture_image_view);
+    SDL_Log("creating image view");
+    sdl_result = _painter_create_image_view(painter, image_format, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, shader->mip_levels, &shader->texture_image, &shader->texture_image_view);
     if (!sdl_result) return SDL_FALSE;
 
     VkSamplerCreateInfo sampler_create_info;
@@ -326,6 +346,7 @@ extern SDL_bool _painter_load_image_and_sampler(EsPainter* painter, const char* 
     sampler_create_info.maxLod = (float) shader->mip_levels;
     sampler_create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     sampler_create_info.unnormalizedCoordinates = VK_FALSE;
+    SDL_Log("creating sampler");
     result = vkCreateSampler(painter->device, &sampler_create_info, NULL, &shader->texture_sampler);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture image sampler");
@@ -816,6 +837,7 @@ SDL_bool _painter_swapchain_renderpass_init(EsPainter* painter) {
 }
 
 void _painter_read_obj_file(const char* filename, const int is_mtl, const char *obj_filename, char** data, size_t* len) {
+    // TODO (10 Dec 2020 sam): Why is there an obj_filename param?
     obj_filename;
     if (is_mtl == 1) {
         SDL_Log("We currently don't load mtl files\n");
@@ -1132,6 +1154,7 @@ void _painter_cleanup_swapchain(EsPainter* painter) {
     vkQueueWaitIdle(painter->presentation_queue);
     vkDeviceWaitIdle(painter->device);
     _painter_shader_cleanup(painter, painter->skybox_shader);
+    _painter_shader_cleanup(painter, painter->ui_shader);
     for (Uint32 i=0; i<painter->num_shaders; i++) {
         _painter_shader_cleanup(painter, &painter->shaders[i]);
     }
@@ -1579,7 +1602,7 @@ SDL_bool _painter_end_single_use_command_buffer(EsPainter* painter, VkCommandBuf
     return SDL_TRUE;
 }
 
-SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat image_format, Uint32 width, Uint32 height, Uint32 mip_levels, SDL_bool is_cubemap) {
+SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat image_format, Uint32 width, Uint32 height, Uint32 mip_levels, ShaderType shader_type) {
     SDL_bool sdl_result;
     VkFormatProperties format_properties;
     vkGetPhysicalDeviceFormatProperties(painter->physical_device, image_format, &format_properties);
@@ -1599,13 +1622,14 @@ SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat 
     barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.levelCount = 1;
-    if (is_cubemap)
+    if (shader_type == SKYBOX_SHADER)
         barrier.subresourceRange.layerCount = 6;
     else
         barrier.subresourceRange.layerCount = 1;
     int mip_width = width;
     int mip_height = height;
     for (Uint32 i=1; i<mip_levels; i++) {
+        // TODO (15 Dec 2020 sam): Figure out how to generate mipmaps for font texture
         barrier.subresourceRange.baseMipLevel = i - 1;
         barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -1624,7 +1648,7 @@ SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat 
         blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         blit.srcSubresource.mipLevel = i - 1;
         blit.srcSubresource.baseArrayLayer = 0;
-        if (is_cubemap)
+        if (shader_type == SKYBOX_SHADER)
             blit.srcSubresource.layerCount = 6;
         else
             blit.srcSubresource.layerCount = 1;
@@ -1643,14 +1667,15 @@ SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat 
         blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         blit.dstSubresource.mipLevel = i;
         blit.dstSubresource.baseArrayLayer = 0;
-        if (is_cubemap)
+        if (shader_type == SKYBOX_SHADER)
             blit.dstSubresource.layerCount = 6;
         else
             blit.dstSubresource.layerCount = 1;
-        vkCmdBlitImage(command_buffer,
-            *image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            *image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            1, &blit, VK_FILTER_LINEAR);
+        if (shader_type != UI_SHADER)
+            vkCmdBlitImage(command_buffer,
+                *image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                *image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                1, &blit, VK_FILTER_LINEAR);
         barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
@@ -1953,7 +1978,7 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     return SDL_TRUE;
 }
 
-SDL_bool _painter_init_shader_data(EsPainter* painter, ShaderData* shader, SDL_bool is_skybox) {
+SDL_bool _painter_init_shader_data(EsPainter* painter, ShaderData* shader, ShaderType type) {
     SDL_bool sdl_result;
     sdl_result = _painter_load_shaders(painter, shader);
     if (!sdl_result) return SDL_FALSE;
@@ -1961,11 +1986,14 @@ SDL_bool _painter_init_shader_data(EsPainter* painter, ShaderData* shader, SDL_b
     if (!sdl_result) return SDL_FALSE;
     sdl_result = _painter_create_pipeline(painter, shader);
     if (!sdl_result) return SDL_FALSE;
-    if (is_skybox) 
+    if (type == SKYBOX_SHADER) 
          sdl_result = _painter_load_cubemap_and_sampler(painter, SKYBOX_MODEL_TEXTURE_PATH0, SKYBOX_MODEL_TEXTURE_PATH1, SKYBOX_MODEL_TEXTURE_PATH2, SKYBOX_MODEL_TEXTURE_PATH3, SKYBOX_MODEL_TEXTURE_PATH4, SKYBOX_MODEL_TEXTURE_PATH5, shader);
+    else if (type == UI_SHADER)
+        sdl_result = _painter_load_image_and_sampler(painter, shader->texture_filepath, shader, painter->ui->texture, painter->ui->tex_width, painter->ui->tex_height, 4, SDL_TRUE, type);
     else
-        sdl_result = _painter_load_image_and_sampler(painter, shader->texture_filepath, shader);
+        sdl_result = _painter_load_image_and_sampler(painter, shader->texture_filepath, shader, NULL, 0, 0, 0, SDL_FALSE, type);
     if (!sdl_result) return _painter_custom_error("Texture Load Failed", shader->shader_name);
+    SDL_Log("textures loaded");
 
     VkMemoryPropertyFlags vertex_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     VkMemoryPropertyFlags vertex_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;

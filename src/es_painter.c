@@ -62,6 +62,9 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     painter->skybox_shader->shader_name = "Skybox Shader";
     painter->skybox_shader->vertex_shader = "data/spirv/skybox_vertex.spv";
     painter->skybox_shader->fragment_shader = "data/spirv/skybox_fragment.spv";
+    painter->ui_shader->shader_name = "UI Shader";
+    painter->ui_shader->vertex_shader = "data/spirv/ui_vertex.spv";
+    painter->ui_shader->fragment_shader = "data/spirv/ui_fragment.spv";
 
     ret = tinyobj_parse_obj(&attrib, &shapes, &num_shapes, &materials,
                             &num_materials, GRASS_MODEL_PATH, _painter_read_obj_file, flags);
@@ -155,10 +158,15 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         // painter->skybox_shader->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
         // painter->skybox_shader->vertices[face.v_idx].tex.y = 1.0f - attrib.texcoords[face.vt_idx*2 + 1];
     }
-
     tinyobj_attrib_free(&attrib);
     tinyobj_shapes_free(shapes, num_shapes);
     tinyobj_materials_free(materials, num_materials);
+
+    painter->ui_shader->num_vertices = painter->ui->vertices_size;
+    painter->ui_shader->vertices = painter->ui->vertices;
+    painter->ui_shader->num_indices = painter->ui->indices_size;
+    painter->ui_shader->indices = painter->ui->indices;
+    SDL_Log("UI shader num vertices = %i", painter->ui_shader->num_vertices);
 
     tree_shader.num_vertices = 100000;
     tree_shader.vertices = (EsVertex*) SDL_malloc(tree_shader.num_vertices * sizeof(EsVertex));
@@ -282,6 +290,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
     if (!sdl_result) return SDL_FALSE;
     painter->num_shaders = 3;
     painter->skybox_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
+    painter->ui_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
     painter->shaders = (ShaderData*) SDL_malloc(painter->num_shaders * sizeof(ShaderData));
     sdl_result = _painter_load_data(painter);
     if (!sdl_result) return SDL_FALSE;
@@ -315,10 +324,12 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     if (!sdl_result) return SDL_FALSE;
 
     for (Uint32 i=0; i<painter->num_shaders; i++) {
-        sdl_result = _painter_init_shader_data(painter, &painter->shaders[i], SDL_FALSE);
+        sdl_result = _painter_init_shader_data(painter, &painter->shaders[i], MODEL_SHADER);
         if (!sdl_result) return SDL_FALSE;
     }
-    sdl_result = _painter_init_shader_data(painter, painter->skybox_shader, SDL_TRUE);
+    sdl_result = _painter_init_shader_data(painter, painter->ui_shader, UI_SHADER);
+    if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_init_shader_data(painter, painter->skybox_shader, SKYBOX_SHADER);
     if (!sdl_result) return SDL_FALSE;
 
     painter->uniform_buffer_size = sizeof(UniformBufferObject);
@@ -334,6 +345,8 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         if (!sdl_result) _painter_custom_error("Setup Error", "Could not create descriptor sets");
     }
     sdl_result = _painter_create_descriptor_sets(painter, painter->skybox_shader);
+    if (!sdl_result) _painter_custom_error("Setup Error", "Could not create descriptor sets");
+    sdl_result = _painter_create_descriptor_sets(painter, painter->ui_shader);
     if (!sdl_result) _painter_custom_error("Setup Error", "Could not create descriptor sets");
 
     sdl_result = _painter_create_framebuffers(painter);
@@ -392,6 +405,13 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->skybox_shader->pipeline_layout, 0, 1, &painter->skybox_shader->descriptor_sets[i], 0, NULL);
         vkCmdDrawIndexed(painter->command_buffers[i], painter->skybox_shader->num_indices, 1, 0, 0, 0);
 
+        vertex_buffers[0] = painter->ui_shader->vertex_buffer;
+        vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->ui_shader->pipeline);
+        vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
+        vkCmdBindIndexBuffer(painter->command_buffers[i], painter->ui_shader->index_buffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->ui_shader->pipeline_layout, 0, 1, &painter->ui_shader->descriptor_sets[i], 0, NULL);
+        vkCmdDrawIndexed(painter->command_buffers[i], painter->ui_shader->num_indices, 1, 0, 0, 0);
+
         vkCmdEndRenderPass(painter->command_buffers[i]);
         result = vkEndCommandBuffer(painter->command_buffers[i]);
         if (result != VK_SUCCESS) {
@@ -443,6 +463,26 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     }
     SDL_memcpy(uniform_data, &painter->uniform_buffer_object, (size_t) painter->uniform_buffer_size);
     vkUnmapMemory(painter->device, painter->uniform_buffers_memory[image_index]);
+
+    void* ui_data;
+    result = vkMapMemory(painter->device, painter->ui_shader->vertex_staging_buffer_memory, 0, painter->ui_shader->vertex_staging_buffer_size, 0, &ui_data);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Rendering.", "Could not map ui vertices");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_memcpy(ui_data, painter->ui_shader->vertices, (size_t) painter->ui_shader->vertex_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->ui_shader->vertex_staging_buffer_memory);
+    sdl_result = _painter_load_buffer_via_staging(painter, painter->ui_shader->vertices, &painter->ui_shader->vertex_staging_buffer_memory, &painter->ui_shader->vertex_staging_buffer, &painter->ui_shader->vertex_buffer, painter->ui_shader->vertex_staging_buffer_size);
+    result = vkMapMemory(painter->device, painter->ui_shader->index_staging_buffer_memory, 0, painter->ui_shader->index_staging_buffer_size, 0, &ui_data);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Rendering.", "Could not map ui indices memory");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_memcpy(ui_data, painter->ui_shader->indices, (size_t) painter->ui_shader->index_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->ui_shader->index_staging_buffer_memory);
+    sdl_result = _painter_load_buffer_via_staging(painter, painter->ui_shader->indices, &painter->ui_shader->index_staging_buffer_memory, &painter->ui_shader->index_staging_buffer, &painter->ui_shader->index_buffer, painter->ui_shader->index_staging_buffer_size);
 
     if (painter->images_in_flight[image_index] != VK_NULL_HANDLE)
         vkWaitForFences(painter->device, 1, &painter->images_in_flight[image_index], VK_TRUE, UINT64_MAX);
