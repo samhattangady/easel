@@ -308,7 +308,8 @@ extern SDL_bool _painter_load_image_and_sampler(EsPainter* painter, const char* 
     if (tex_channels == 4)
         image_format = VK_FORMAT_R8G8B8A8_SRGB;
     else if (tex_channels == 1)
-        image_format = VK_FORMAT_R8_SRGB;
+        image_format = VK_FORMAT_R8G8B8A8_SRGB;
+        // image_format = VK_FORMAT_R8_SRGB;
     SDL_Log("Creating image");
     sdl_result = _painter_create_image(painter, tex_width, tex_height, shader->mip_levels, VK_SAMPLE_COUNT_1_BIT, image_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &shader->texture_image, &shader->texture_image_memory, 1, SDL_FALSE);
     if (!sdl_result) return SDL_FALSE;
@@ -1889,9 +1890,10 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     multisample_state_create_info.alphaToCoverageEnable = VK_FALSE;
     multisample_state_create_info.alphaToOneEnable = VK_FALSE;
     VkPipelineColorBlendAttachmentState color_blend_attachment_state;
-    color_blend_attachment_state.blendEnable = VK_FALSE;
-    color_blend_attachment_state.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-    color_blend_attachment_state.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+    // TODO (16 Dec 2020 sam): Don't use alpha blending for all the things. Use only where necessary.
+    color_blend_attachment_state.blendEnable = VK_TRUE;
+    color_blend_attachment_state.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    color_blend_attachment_state.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     color_blend_attachment_state.colorBlendOp = VK_BLEND_OP_ADD;
     color_blend_attachment_state.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
     color_blend_attachment_state.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;

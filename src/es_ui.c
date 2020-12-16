@@ -38,10 +38,15 @@ SDL_bool _load_font(EsUI* ui) {
         return SDL_FALSE;
     }
     SDL_RWclose(font_file);
-    result = stbtt_BakeFontBitmap(font_raw, 0, FONT_SIZE, ui->texture, ui->tex_width, ui->tex_height, 32, 95, ui->glyphs);
+    // TODO (16 Dec 2020 sam): Load this into a one channel sampler, and use that.
+    result = stbtt_BakeFontBitmap(font_raw, 0, FONT_SIZE, temp_texture, ui->tex_width, ui->tex_height, 32, 95, ui->glyphs);
     SDL_memset(ui->texture, 0, ui->tex_width*ui->tex_height*4*sizeof(Uint8));
-    for (Uint32 i=0; i<ui->tex_width*ui->tex_height; i++)
-        ui->texture[i*4] = temp_texture[i];
+    for (Uint32 i=0; i<ui->tex_width*ui->tex_height; i++) {
+        ui->texture[i*4 + 0] = temp_texture[i];
+        ui->texture[i*4 + 1] = temp_texture[i];
+        ui->texture[i*4 + 2] = temp_texture[i];
+        ui->texture[i*4 + 3] = temp_texture[i];
+    }
     if (result == 0) {
         SDL_free(font_raw);
         warehouse_error_popup("Font load error", "Could not load font glyphs");
@@ -79,32 +84,6 @@ SDL_bool ui_flush(EsUI* ui) {
 
 SDL_bool ui_render_text(EsUI* ui, const char* text, float x, float y) {
     size_t len = SDL_strlen(text);
-    Uint32 first_vertex = 0;
-    Uint32 first_index = 0;
-    ui->vertices[first_vertex + 0].pos.x = -1.0;
-    ui->vertices[first_vertex + 0].pos.y = -1.0;
-    ui->vertices[first_vertex + 1].pos.x = -1.0;
-    ui->vertices[first_vertex + 1].pos.y = 1.0;
-    ui->vertices[first_vertex + 2].pos.x = 1.0;
-    ui->vertices[first_vertex + 2].pos.y = 1.0;
-    ui->vertices[first_vertex + 3].pos.x = 1.0;
-    ui->vertices[first_vertex + 3].pos.y = -1.0;
-    ui->vertices[first_vertex + 0].tex.x = 0.0;
-    ui->vertices[first_vertex + 0].tex.y = 0.0;
-    ui->vertices[first_vertex + 1].tex.x = 1.0;
-    ui->vertices[first_vertex + 1].tex.y = 0.0;
-    ui->vertices[first_vertex + 2].tex.x = 1.0;
-    ui->vertices[first_vertex + 2].tex.y = 1.0;
-    ui->vertices[first_vertex + 3].tex.x = 0.0;
-    ui->vertices[first_vertex + 3].tex.y = 1.0;
-    ui->indices[first_index + 0] = first_vertex + 0;
-    ui->indices[first_index + 1] = first_vertex + 2;
-    ui->indices[first_index + 2] = first_vertex + 1;
-    ui->indices[first_index + 3] = first_vertex + 0;
-    ui->indices[first_index + 4] = first_vertex + 3;
-    ui->indices[first_index + 5] = first_vertex + 2;
-    return SDL_TRUE;
-
     for (Uint32 i=0; i<len; i++) {
         stbtt_aligned_quad q;
         char c = text[i] - 32;

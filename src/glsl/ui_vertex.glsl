@@ -8,6 +8,7 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 proj;
     vec3 camera_position;
     float time;
+    vec2 window_size;
 } ubo;
 
 layout(location = 0) in vec3 inPosition;
@@ -20,8 +21,8 @@ layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec2 fragTexCoord;
 
 void main() {
-    vec4 pos = vec4(inPosition, 1.0f);
-    gl_Position = vec4(pos.xy, 1.0, 1.0);
+    vec4 pos = vec4(inPosition, 0.5f);
+    gl_Position = vec4(pos.xy/80.0, 3.0, 6.0);
     fragColor = inColor;
     fragTexCoord = inTexCoord;
 }

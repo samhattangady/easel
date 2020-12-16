@@ -11,7 +11,7 @@ layout(location = 0) out vec4 outColor;
 
 void main() {
     vec4 col = texture(texSampler, fragTexCoord);
-    if (col.a < 0.3)
-        discard;
+    // if (col.a < 0.3)
+    //     discard;
     outColor = col;
 }

@@ -26,6 +26,7 @@ typedef struct {
     mat4 proj;
     vec3 camera_position;
     float time;
+    vec2 window_size;
 } UniformBufferObject;
 
 typedef struct {

@@ -44,8 +44,8 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     int ret;
 
     ShaderData tree_shader = painter->shaders[0];
-    ShaderData grass_shader = painter->shaders[1];
-    ShaderData ground_shader = painter->shaders[2];
+    ShaderData ground_shader = painter->shaders[1];
+    ShaderData grass_shader = painter->shaders[2];
 
     grass_shader.shader_name = "Grass Shader";
     grass_shader.vertex_shader = "data/spirv/grass_vertex.spv";
@@ -273,8 +273,8 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     }
 
     painter->shaders[0] = tree_shader;
-    painter->shaders[1] = grass_shader;
-    painter->shaders[2] = ground_shader;
+    painter->shaders[1] = ground_shader;
+    painter->shaders[2] = grass_shader;
 
     painter->uniform_buffer_object.model = identity_mat4();
     painter->camera_fov = 45.0f;
@@ -390,6 +390,13 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
 
         vkCmdBeginRenderPass(painter->command_buffers[i], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
+        vertex_buffers[0] = painter->skybox_shader->vertex_buffer;
+        vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->skybox_shader->pipeline);
+        vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
+        vkCmdBindIndexBuffer(painter->command_buffers[i], painter->skybox_shader->index_buffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->skybox_shader->pipeline_layout, 0, 1, &painter->skybox_shader->descriptor_sets[i], 0, NULL);
+        vkCmdDrawIndexed(painter->command_buffers[i], painter->skybox_shader->num_indices, 1, 0, 0, 0);
+
         for (Uint32 j=0; j<painter->num_shaders; j++) {
             vertex_buffers[0] = painter->shaders[j].vertex_buffer;
             vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->shaders[j].pipeline);
@@ -398,12 +405,6 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
             vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->shaders[j].pipeline_layout, 0, 1, &painter->shaders[j].descriptor_sets[i], 0, NULL);
             vkCmdDrawIndexed(painter->command_buffers[i], painter->shaders[j].num_indices, 1, 0, 0, 0);
         }
-        vertex_buffers[0] = painter->skybox_shader->vertex_buffer;
-        vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->skybox_shader->pipeline);
-        vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
-        vkCmdBindIndexBuffer(painter->command_buffers[i], painter->skybox_shader->index_buffer, 0, VK_INDEX_TYPE_UINT32);
-        vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->skybox_shader->pipeline_layout, 0, 1, &painter->skybox_shader->descriptor_sets[i], 0, NULL);
-        vkCmdDrawIndexed(painter->command_buffers[i], painter->skybox_shader->num_indices, 1, 0, 0, 0);
 
         vertex_buffers[0] = painter->ui_shader->vertex_buffer;
         vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->ui_shader->pipeline);

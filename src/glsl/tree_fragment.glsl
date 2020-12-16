@@ -52,7 +52,9 @@ void main() {
     if (texCoord.x > 0) {
         leaf_tint = inColor.z;
     }
-    col = mix(col, col*0.5, 1.0-leaf_tint);
+    col = mix(col, vec4(col.xyz*0.8, 1.0), 1.0-leaf_tint);
+    if (col.a < 0.3)
+        discard;
     // col = vec4(inColor, 1.0);
     outColor = col;
 }
