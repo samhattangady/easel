@@ -9,6 +9,8 @@ layout(location = 1) in vec2 fragTexCoord;
 layout(location = 2) in float time;
 layout(location = 3) in vec3 inPos;
 layout(location = 4) in vec3 inColor;
+layout(location = 5) in vec3 inNormal;
+layout(location = 6) in vec3 inLightDirection;
 
 layout(location = 0) out vec4 outColor;
 
@@ -46,15 +48,19 @@ void main() {
         texCoord = rotate(texCoord, distance(texCoord, vec2(0.0)) * sin(time/2.7) * noise(inPos.xz) * 3.1415/8.0f);
     }
     vec4 col = texture(texSampler, texCoord);
-    if (col.a < 0.3)
+    if (col.a < 0.5)
         discard;
     float leaf_tint = 1.0;
     if (texCoord.x > 0) {
         leaf_tint = inColor.z;
     }
-    col = mix(col, vec4(col.xyz*0.8, 1.0), 1.0-leaf_tint);
+    col = mix(col, vec4(col.xyz*0.7, 1.0), 1.0-leaf_tint);
     if (col.a < 0.3)
         discard;
+    vec4 shadow = vec4(col.xyz * 0.2, 1.0);
+    float light = dot(-inLightDirection, normalize(inNormal));
+    light = (light+1.0) / 2.0;
     // col = vec4(inColor, 1.0);
+    col = mix(shadow, col, light);
     outColor = col;
 }

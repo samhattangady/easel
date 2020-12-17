@@ -27,6 +27,7 @@ typedef struct {
     vec3 camera_position;
     float time;
     vec2 window_size;
+    vec3 light_direction;
 } UniformBufferObject;
 
 typedef struct {

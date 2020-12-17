@@ -8,6 +8,8 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 proj;
     vec3 camera_position;
     float time;
+    vec2 window_size;
+    vec3 light_direction;
 } ubo;
 
 layout(location = 0) in vec3 inPosition;
@@ -21,6 +23,8 @@ layout(location = 1) out vec2 fragTexCoord;
 layout(location = 2) out float time;
 layout(location = 3) out vec3 outPos;
 layout(location = 4) out vec3 outColor;
+layout(location = 5) out vec3 outNormal;
+layout(location = 6) out vec3 lightDirection;
 
 float rand(float n) { return fract(sin(n) * 43758.5453123); }
 float rand(vec2 n) { return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453); }
@@ -82,4 +86,6 @@ void main() {
     time = ubo.time;
     outPos = pos;
     outColor = inColor;
+    outNormal = inNormal;
+    lightDirection = ubo.light_direction;
 }

@@ -611,7 +611,7 @@ SDL_bool geom_add_triple_quad_mesh(EsGeometry* geom, vec3 position, vec3 axis, f
     textures[2] = tex2;
     textures[3] = build_vec2(tex2.x, tex1.y);
     // TODO (04 Dec 2020 sam): Use proper normals here.
-    normals[0] = build_vec3(0.0f, 0.0f, 1.0f);
+    normals[0] = vec3_normalize(axis);
     vec4ui* quads = (vec4ui*) SDL_malloc(3 * sizeof(vec4ui));
     quads[0] = build_vec4ui(first_vertex+0, first_vertex+3, first_vertex+9, first_vertex+6);
     quads[1] = build_vec4ui(first_vertex+1, first_vertex+4, first_vertex+10, first_vertex+7);

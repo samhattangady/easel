@@ -278,6 +278,7 @@ SDL_bool _painter_load_data(EsPainter* painter) {
 
     painter->uniform_buffer_object.model = identity_mat4();
     painter->uniform_buffer_object.window_size = build_vec2(1024.0f, 768.0f);
+    painter->uniform_buffer_object.light_direction = vec3_normalize(build_vec3(-1.0, -1.0, -1.0));
     painter->camera_fov = 45.0f;
     painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 200.0f);
 
