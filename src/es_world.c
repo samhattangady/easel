@@ -1,16 +1,13 @@
 #include "es_world.h"
 #include "stb_perlin.h"
 
-#define MOVE_SPEED 0.006f
+#define MOVE_SPEED 6.0f
 
 SDL_bool world_init(EsWorld* w) {
     w->running = SDL_TRUE;
     w->position = build_vec3(0.0f, 8.0f, 35.0f);
     w->target = build_vec3(0.0f, 4.0f, 0.0f);
     w->up_axis = build_vec3(0.0f, 1.0f, 0.0f);
-    // TODO (15 Dec 2020 sam): For some reason this stopped working. Works till commit 1f5810444a27b03c9e9903fba99c17f6d806509b
-    int result = SDL_SetRelativeMouseMode(SDL_TRUE);
-    SDL_Log("Relavive mouse = %i", result);
     w->controls.up_down = SDL_FALSE;
     w->controls.down_down = SDL_FALSE;
     w->controls.left_down = SDL_FALSE;
@@ -34,7 +31,7 @@ SDL_bool world_init(EsWorld* w) {
     return SDL_TRUE;
 }
 
-SDL_bool world_update(EsWorld* w) {
+SDL_bool world_update(EsWorld* w, Uint32 timestep) {
     vec3 target_y = build_vec3(w->target.x, 0.0f, w->target.z);
     vec3 position_y = build_vec3(w->position.x, 0.0f, w->position.z);
     vec3 forward = vec3_normalize(vec3_sub(target_y, position_y));
@@ -49,6 +46,7 @@ SDL_bool world_update(EsWorld* w) {
     if (w->controls.left_down)
         movement = vec3_add(movement, vec3_scale(right, -MOVE_SPEED));
     // TODO (03 Dec 2020 sam): Normalize when moving forward and side.
+    movement = vec3_scale(movement, timestep/1000.0f);
     w->position = vec3_add(w->position, movement);
     w->target = vec3_add(w->target, movement);
     float x_angle = -w->mouse.moved_x / 768.0f;

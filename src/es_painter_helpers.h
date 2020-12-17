@@ -522,9 +522,10 @@ SDL_bool _painter_swapchain_renderpass_init(EsPainter* painter) {
     }
 
 #if DEBUG_BUILD==SDL_TRUE
-    const Uint32 validation_layers_count = 1;
+    const Uint32 validation_layers_count = 2;
     const char** validation_layers = (const char**) SDL_malloc(validation_layers_count * sizeof(char*));
     validation_layers[0] =  "VK_LAYER_KHRONOS_validation";
+    validation_layers[1] =  "VK_LAYER_LUNARG_monitor";
     Uint32 layer_count;
     result = vkEnumerateInstanceLayerProperties(&layer_count, NULL);
     if (result != VK_SUCCESS) {
@@ -902,8 +903,7 @@ SDL_bool _painter_initialise_sdl_window(EsPainter* painter, const char* window_n
     }
     painter->window = window;
     painter->start_time = SDL_GetTicks();
-
-
+    SDL_SetRelativeMouseMode(SDL_TRUE);
     return SDL_TRUE;
 }
 
@@ -922,9 +922,10 @@ SDL_bool _painter_init_instance(EsPainter* painter) {
     app_info.apiVersion = VK_API_VERSION_1_0;
 
 #if DEBUG_BUILD==SDL_TRUE
-    const Uint32 validation_layers_count = 1;
+    const Uint32 validation_layers_count = 2;
     const char** validation_layers = (const char**) SDL_malloc(validation_layers_count * sizeof(char*));
     validation_layers[0] =  "VK_LAYER_KHRONOS_validation";
+    validation_layers[1] =  "VK_LAYER_LUNARG_monitor";
     Uint32 layer_count;
     result = vkEnumerateInstanceLayerProperties(&layer_count, NULL);
     if (result != VK_SUCCESS) {

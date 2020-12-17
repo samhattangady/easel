@@ -277,6 +277,7 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     painter->shaders[2] = grass_shader;
 
     painter->uniform_buffer_object.model = identity_mat4();
+    painter->uniform_buffer_object.window_size = build_vec2(1024.0f, 768.0f);
     painter->camera_fov = 45.0f;
     painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 200.0f);
 
@@ -329,6 +330,17 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     }
     sdl_result = _painter_init_shader_data(painter, painter->ui_shader, UI_SHADER);
     if (!sdl_result) return SDL_FALSE;
+    void* ui_data;
+    result = vkMapMemory(painter->device, painter->ui_shader->index_staging_buffer_memory, 0, painter->ui_shader->index_staging_buffer_size, 0, &ui_data);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Rendering.", "Could not map ui indices memory");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_memcpy(ui_data, painter->ui_shader->indices, (size_t) painter->ui_shader->index_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->ui_shader->index_staging_buffer_memory);
+    sdl_result = _painter_load_buffer_via_staging(painter, painter->ui_shader->indices, &painter->ui_shader->index_staging_buffer_memory, &painter->ui_shader->index_staging_buffer, &painter->ui_shader->index_buffer, painter->ui_shader->index_staging_buffer_size);
+
     sdl_result = _painter_init_shader_data(painter, painter->skybox_shader, SKYBOX_SHADER);
     if (!sdl_result) return SDL_FALSE;
 
@@ -466,6 +478,9 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     vkUnmapMemory(painter->device, painter->uniform_buffers_memory[image_index]);
 
     void* ui_data;
+    // TODO (16 Dec 2020 sam): Only map this memory if there is some text to be shown.
+    // Since we are using an intermediate mode type UI, this might require us to clear the 
+    // buffer before we stop loading data and stuff, but yes.
     result = vkMapMemory(painter->device, painter->ui_shader->vertex_staging_buffer_memory, 0, painter->ui_shader->vertex_staging_buffer_size, 0, &ui_data);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Rendering.", "Could not map ui vertices");
@@ -475,15 +490,6 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     SDL_memcpy(ui_data, painter->ui_shader->vertices, (size_t) painter->ui_shader->vertex_staging_buffer_size);
     vkUnmapMemory(painter->device, painter->ui_shader->vertex_staging_buffer_memory);
     sdl_result = _painter_load_buffer_via_staging(painter, painter->ui_shader->vertices, &painter->ui_shader->vertex_staging_buffer_memory, &painter->ui_shader->vertex_staging_buffer, &painter->ui_shader->vertex_buffer, painter->ui_shader->vertex_staging_buffer_size);
-    result = vkMapMemory(painter->device, painter->ui_shader->index_staging_buffer_memory, 0, painter->ui_shader->index_staging_buffer_size, 0, &ui_data);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Rendering.", "Could not map ui indices memory");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    SDL_memcpy(ui_data, painter->ui_shader->indices, (size_t) painter->ui_shader->index_staging_buffer_size);
-    vkUnmapMemory(painter->device, painter->ui_shader->index_staging_buffer_memory);
-    sdl_result = _painter_load_buffer_via_staging(painter, painter->ui_shader->indices, &painter->ui_shader->index_staging_buffer_memory, &painter->ui_shader->index_staging_buffer, &painter->ui_shader->index_buffer, painter->ui_shader->index_staging_buffer_size);
 
     if (painter->images_in_flight[image_index] != VK_NULL_HANDLE)
         vkWaitForFences(painter->device, 1, &painter->images_in_flight[image_index], VK_TRUE, UINT64_MAX);

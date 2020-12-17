@@ -49,7 +49,7 @@ typedef struct {
 } EsWorld;
 
 extern SDL_bool world_init(EsWorld* w);
-extern SDL_bool world_update(EsWorld* w);
+extern SDL_bool world_update(EsWorld* w, Uint32 timestep);
 extern SDL_bool world_process_input_event(EsWorld* w, SDL_Event e);
 extern SDL_bool world_flush_inputs(EsWorld* w);
 

@@ -29,7 +29,13 @@ int main(int argc, char** argv) {
 
     SDL_Log("Running Event Loop\n");
     SDL_Event event;
+    Uint32 frame_start_time = 0;
+    Uint32 frame_end_time = 0;
+    Uint32 timestep;
+    char fps_buffer[100];
     while (world.running) {
+        timestep = frame_end_time - frame_start_time;
+        frame_start_time = SDL_GetTicks();
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
                 world.running = SDL_FALSE;
@@ -40,13 +46,16 @@ int main(int argc, char** argv) {
                 world_process_input_event(&world, event);
             }
         }
-        ui_render_text(&ui, "Easel", 0.0f, 0.0f);
-        result = world_update(&world);
+        SDL_snprintf(fps_buffer, 100, "%i ms", timestep);
+        ui_render_text(&ui, "Easel", 100.0f, 100.0f);
+        ui_render_text(&ui, fps_buffer, 100.0f, 120.0f);
+        result = world_update(&world, timestep);
         result = painter_paint_frame(&painter);
         if (!result)
             return -2;
         result = world_flush_inputs(&world);
         result = ui_flush(&ui);
+        frame_end_time = SDL_GetTicks();
     }
 
     SDL_Log("Program quit after %i ticks", event.quit.timestamp);

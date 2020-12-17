@@ -67,6 +67,14 @@ SDL_bool ui_init(EsUI* ui) {
     ui->indices = (Uint32*) SDL_malloc(ui->indices_size * sizeof(Uint32));
     sdl_result = _load_font(ui);
     if (!sdl_result) return SDL_FALSE;
+    for (Uint32 i=0; i<NUM_CHARS; i++) {
+        ui->indices[i*6 + 0] = i*4 + 0;
+        ui->indices[i*6 + 1] = i*4 + 2;
+        ui->indices[i*6 + 2] = i*4 + 1;
+        ui->indices[i*6 + 3] = i*4 + 0;
+        ui->indices[i*6 + 4] = i*4 + 3;
+        ui->indices[i*6 + 5] = i*4 + 2;
+    }
     return SDL_TRUE;
 }
 
@@ -74,10 +82,6 @@ SDL_bool ui_flush(EsUI* ui) {
     if (ui->num_vertices > 0) {
         ui->num_vertices = 0;
         SDL_memset(ui->vertices, 0, ui->vertices_size * sizeof(EsVertex));
-    }
-    if (ui->num_indices > 0) {
-        ui->num_indices = 0;
-        SDL_memset(ui->indices, 0, ui->vertices_size * sizeof(Uint32));
     }
     return SDL_TRUE;
 }
@@ -90,10 +94,6 @@ SDL_bool ui_render_text(EsUI* ui, const char* text, float x, float y) {
         stbtt_GetBakedQuad(ui->glyphs, 512, 512, c, &x, &y, &q, 1);
         if (ui->num_vertices + 4 > ui->vertices_size) {
             SDL_Log("UI vertex buffer full. Cannot add further chars");
-            break;
-        }
-        if (ui->num_indices + 4 > ui->indices_size) {
-            SDL_Log("UI index buffer full. Cannot add further chars");
             break;
         }
         Uint32 first_vertex = ui->num_vertices;
@@ -118,14 +118,6 @@ SDL_bool ui_render_text(EsUI* ui, const char* text, float x, float y) {
         ui->vertices[first_vertex + 1].pos.z = 1.0f;
         ui->vertices[first_vertex + 2].pos.z = 1.0f;
         ui->vertices[first_vertex + 3].pos.z = 1.0f;
-        Uint32 first_index = ui->num_indices;
-        ui->num_indices += 6;
-        ui->indices[first_index + 0] = first_vertex + 0;
-        ui->indices[first_index + 1] = first_vertex + 2;
-        ui->indices[first_index + 2] = first_vertex + 1;
-        ui->indices[first_index + 3] = first_vertex + 0;
-        ui->indices[first_index + 4] = first_vertex + 3;
-        ui->indices[first_index + 5] = first_vertex + 2;
     }
     return SDL_TRUE;
 }
