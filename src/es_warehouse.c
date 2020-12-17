@@ -212,6 +212,13 @@ vec2 build_vec2(float x, float y) {
     return result;
 }
 
+vec2ui build_vec2ui(Uint32 x, Uint32 y) {
+    vec2ui result;
+    result.x = x;
+    result.y = y;
+    return result;
+}
+
 vec3 build_vec3(float x, float y, float z) {
     vec3 result;
     result.x = x;

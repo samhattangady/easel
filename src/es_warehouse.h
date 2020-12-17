@@ -16,6 +16,11 @@ typedef struct {
 } vec2;
 
 typedef struct {
+    Uint32 x;
+    Uint32 y;
+} vec2ui;
+
+typedef struct {
     float x;
     float y;
     float z;
@@ -59,6 +64,7 @@ typedef struct {
 extern void warehouse_error_popup(const char* error_header, const char* error_text);
 extern float warehouse_log_2(float num);
 extern vec2 build_vec2(float x, float y);
+extern vec2ui build_vec2ui(Uint32 x, Uint32 y);
 extern mat4 mat4_mat4_multiply(mat4 a, mat4 b);
 extern vec4 mat4_vec4_multiply(mat4 a, vec4 b);
 extern void print_mat4(mat4 a);
