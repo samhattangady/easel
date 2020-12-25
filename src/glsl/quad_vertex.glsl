@@ -25,10 +25,8 @@ layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec2 fragTexCoord;
 
 void main() {
-    vec4 pos = vec4(inPosition, 0.0);
-    pos.x = ((pos.x/ubo.window_size.x) * 2.0f) - 1.0f;
-    pos.y = ((pos.y/ubo.window_size.y) * 2.0f) - 1.0f;
-    gl_Position = vec4(pos.xy*10, 1.0, 10.0);
+    vec3 pos = inPosition;
+    gl_Position = vec4(pos.xy*15.0, 14.9, 15.0);
     fragColor = inColor;
     fragTexCoord = inTexCoord;
 }

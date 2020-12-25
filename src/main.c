@@ -47,8 +47,8 @@ int main(int argc, char** argv) {
             }
         }
         SDL_snprintf(fps_buffer, 100, "%i ms", timestep);
-        ui_render_text(&ui, "Easel", 100.0f, 100.0f);
-        ui_render_text(&ui, fps_buffer, 100.0f, 120.0f);
+        ui_render_text(&ui, "Easel", 40.0f, 40.0f);
+        ui_render_text(&ui, fps_buffer, 40.0f, 62.0f);
         result = world_update(&world, timestep);
         result = painter_paint_frame(&painter);
         if (!result)

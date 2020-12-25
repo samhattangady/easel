@@ -28,6 +28,7 @@
 #define TREE_MODEL_TEXTURE_PATH "data/img/tree.png"
 #define GROUND_MODEL_TEXTURE_PATH "data/img/ground.png"
 #define GROUND_NUM_VERTICES_SIDE 30
+#define SHADOW_PASS_SIZE 2048
 
 #include "es_painter_helpers.h"
 
@@ -42,6 +43,11 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     size_t num_materials;
     Uint32 flags = TINYOBJ_FLAG_TRIANGULATE;
     int ret;
+    // SameSizeShadowMapCheck
+    painter->shadow_map_size.x = SHADOW_PASS_SIZE;
+    painter->shadow_map_size.y = SHADOW_PASS_SIZE;
+    painter->shadow_map_size.x = 1024;
+    painter->shadow_map_size.y = 768;
 
     ShaderData tree_shader = painter->shaders[0];
     ShaderData ground_shader = painter->shaders[1];
@@ -173,60 +179,6 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     tree_shader.num_indices = 1000000;
     tree_shader.indices = (Uint32*) SDL_malloc(tree_shader.num_indices * sizeof(Uint32));
 
-    /*
-    EsGeometry tree = geom_init_geometry_size(300000, 700000, 2, 300000, 0);
-    for (Uint32 i=0; i<TREE_INSTANCES; i++) {
-        float x = rand_negpos() * GRASS_RADIUS;
-        float z = rand_negpos() * GRASS_RADIUS;
-        if (i == 0) {
-            x = 0.0f;
-            z = 0.0f;
-        }
-        if (vec3_magnitude(build_vec3(x,0,z)) > GRASS_RADIUS/2.0f) {
-            i--;
-            continue;
-        }
-        float y = 1.0f * stb_perlin_noise3(x/10.0f, 0, z/10.0f, 0, 0, 0);
-        vec3 pos = build_vec3(x, y, z);
-        EsTree tree_raw = trees_gen_test();
-        trees_add_to_geom_at_pos(&tree_raw, &tree, pos);
-    }
-    geom_simplify_geometry(&tree);
-    tree_shader.num_vertices = tree.num_vertices;
-    tree_shader.vertices = (EsVertex*) SDL_malloc(tree_shader.num_vertices * sizeof(EsVertex));
-    tree_shader.num_indices = tree.num_faces * 3;
-    tree_shader.indices = (Uint32*) SDL_malloc(tree_shader.num_indices * sizeof(Uint32));
-    for (Uint32 i=0; i<tree.num_vertices; i++) {
-        EsVertex vert;
-        vert.pos = tree.vertices[i];
-        vert.color.x = 0.0;
-        vert.color.y = 0.0;
-        vert.color.z = 0.0;
-        tree_shader.vertices[i] = vert;
-    }
-    for (Uint32 i=0; i<tree.num_faces; i++) {
-        EsFace face = tree.faces[i];
-        EsVertex vert_x = tree_shader.vertices[face.verts.x];
-        EsVertex vert_y = tree_shader.vertices[face.verts.y];
-        EsVertex vert_z = tree_shader.vertices[face.verts.z];
-        vert_x.tex = tree.textures[face.texs.x];
-        vert_y.tex = tree.textures[face.texs.y];
-        vert_z.tex = tree.textures[face.texs.z];
-        vert_x.normal = tree.normals[face.norms.x];
-        vert_y.normal = tree.normals[face.norms.y];
-        vert_z.normal = tree.normals[face.norms.z];
-        vert_x.color = tree.colors[face.cols.x];
-        vert_y.color = tree.colors[face.cols.y];
-        vert_z.color = tree.colors[face.cols.z];
-        tree_shader.vertices[face.verts.x] = vert_x;
-        tree_shader.vertices[face.verts.y] = vert_y;
-        tree_shader.vertices[face.verts.z] = vert_z;
-        tree_shader.indices[i*3 + 0] = face.verts.x;
-        tree_shader.indices[i*3 + 1] = face.verts.y;
-        tree_shader.indices[i*3 + 2] = face.verts.z;
-    }
-    */
-
     ground_shader.num_vertices = (GROUND_NUM_VERTICES_SIDE+1) * (GROUND_NUM_VERTICES_SIDE+1);
     ground_shader.vertices = (EsVertex*) SDL_malloc(ground_shader.num_vertices * sizeof(EsVertex));
     ground_shader.num_indices = ground_shader.num_vertices * 6;
@@ -272,15 +224,39 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         }
     }
 
+    painter->shadow_map_shader->num_vertices = 4;
+    painter->shadow_map_shader->num_indices = 6;
+    painter->shadow_map_shader->vertices = (EsVertex*) SDL_calloc(painter->shadow_map_shader->num_vertices, sizeof(EsVertex));
+    painter->shadow_map_shader->indices = (Uint32*) SDL_malloc(painter->shadow_map_shader->num_indices * sizeof(Uint32));
+    painter->shadow_map_shader->vertices[0].pos = build_vec3(1.0f, 1.0f, 1.0f);
+    painter->shadow_map_shader->vertices[1].pos = build_vec3(1.0f, 0.0f, 1.0f);
+    painter->shadow_map_shader->vertices[2].pos = build_vec3(0.0f, 0.0f, 1.0f);
+    painter->shadow_map_shader->vertices[3].pos = build_vec3(0.0f, 1.0f, 1.0f);
+    painter->shadow_map_shader->vertices[0].tex = build_vec2(1.0f, 1.0f);
+    painter->shadow_map_shader->vertices[1].tex = build_vec2(1.0f, 0.0f);
+    painter->shadow_map_shader->vertices[2].tex = build_vec2(0.0f, 0.0f);
+    painter->shadow_map_shader->vertices[3].tex = build_vec2(0.0f, 1.0f);
+    painter->shadow_map_shader->indices[0] = 0;
+    painter->shadow_map_shader->indices[1] = 1;
+    painter->shadow_map_shader->indices[2] = 2;
+    painter->shadow_map_shader->indices[3] = 0;
+    painter->shadow_map_shader->indices[4] = 2;
+    painter->shadow_map_shader->indices[5] = 3;
+
+
     painter->shaders[0] = tree_shader;
     painter->shaders[1] = ground_shader;
     painter->shaders[2] = grass_shader;
 
     painter->uniform_buffer_object.model = identity_mat4();
     painter->uniform_buffer_object.window_size = build_vec2(1024.0f, 768.0f);
-    painter->uniform_buffer_object.light_direction = vec3_normalize(build_vec3(-1.0, -1.0, -1.0));
     painter->camera_fov = 45.0f;
     painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 200.0f);
+    painter->uniform_buffer_object.light_direction = vec3_normalize(build_vec3(-1.0, -1.0, -1.0));
+    vec3 light_position = vec3_sub(vec3_origin(), vec3_scale(painter->uniform_buffer_object.light_direction, -20.0f));
+    mat4 light_projection = parallel_projection(1.0f, (1024.0f/768.0f), 0.1f, 200.0f);
+    mat4 light_view = look_at(light_position, vec3_origin(), build_vec3(0.0f, 1.0f, 0.0f));
+    painter->uniform_buffer_object.light_proj = mat4_mat4_multiply(light_view, light_projection);
 
     return SDL_TRUE;
 }
@@ -293,6 +269,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
     painter->num_shaders = 3;
     painter->skybox_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
     painter->ui_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
+    painter->shadow_map_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
     painter->shaders = (ShaderData*) SDL_malloc(painter->num_shaders * sizeof(ShaderData));
     sdl_result = _painter_load_data(painter);
     if (!sdl_result) return SDL_FALSE;
@@ -322,7 +299,12 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     VkResult result;
     SDL_bool sdl_result;
 
+    SDL_Log("swapchain renderpass init");
     sdl_result = _painter_swapchain_renderpass_init(painter);
+    if (!sdl_result) return SDL_FALSE;
+
+    SDL_Log("shadow map init");
+    sdl_result = _painter_shadow_map_init(painter);
     if (!sdl_result) return SDL_FALSE;
 
     for (Uint32 i=0; i<painter->num_shaders; i++) {
@@ -344,6 +326,8 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
 
     sdl_result = _painter_init_shader_data(painter, painter->skybox_shader, SKYBOX_SHADER);
     if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_init_shader_data(painter, painter->shadow_map_shader, SHADOW_MAP_SHADER);
+    if (!sdl_result) return SDL_FALSE;
 
     painter->uniform_buffer_size = sizeof(UniformBufferObject);
     painter->uniform_buffers = (VkBuffer*) SDL_malloc(painter->swapchain_image_count * sizeof(VkBuffer));
@@ -355,53 +339,85 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
 
     for (Uint32 i=0; i<painter->num_shaders; i++) {
         sdl_result = _painter_create_descriptor_sets(painter, &painter->shaders[i]);
-        if (!sdl_result) _painter_custom_error("Setup Error", "Could not create descriptor sets");
+        if (!sdl_result) return _painter_custom_error("Setup Error", "Could not create descriptor sets");
     }
     sdl_result = _painter_create_descriptor_sets(painter, painter->skybox_shader);
-    if (!sdl_result) _painter_custom_error("Setup Error", "Could not create descriptor sets");
+    if (!sdl_result) return _painter_custom_error("Setup Error", "Could not create descriptor sets");
     sdl_result = _painter_create_descriptor_sets(painter, painter->ui_shader);
-    if (!sdl_result) _painter_custom_error("Setup Error", "Could not create descriptor sets");
+    if (!sdl_result) return _painter_custom_error("Setup Error", "Could not create descriptor sets");
+    sdl_result = _painter_create_descriptor_sets(painter, painter->shadow_map_shader);
+    if (!sdl_result) return _painter_custom_error("Setup Error", "Could not create descriptor sets");
 
-    sdl_result = _painter_create_framebuffers(painter);
-    if (!sdl_result) _painter_custom_error("Setup Error", "Could not create framebuffers");
+    sdl_result = _painter_create_commandbuffers(painter);
+    if (!sdl_result) return _painter_custom_error("Setup Error", "Could not create commandbuffers");
 
+
+    VkClearColorValue color_value0 = { 1.0f, 0.0f, 0.0f, 1.0f };
+    VkClearColorValue color_value1 = { 0.0f, 0.0f, 0.0f, 0.0f };
+    VkClearDepthStencilValue depth_value0 = { 0.0f, 0 };
+    VkClearDepthStencilValue depth_value1 = { 1.0f, 0 };
+    VkClearValue shadow_map_clear_values[1];
+    shadow_map_clear_values[0].color = color_value1;
+    shadow_map_clear_values[0].depthStencil.depth = 1.0f;
+    shadow_map_clear_values[0].depthStencil.stencil = 0;
+    VkClearValue clear_values[2];
+    clear_values[0].color = color_value0;
+    clear_values[1].color = color_value1;
+    clear_values[0].depthStencil = depth_value0;
+    clear_values[1].depthStencil = depth_value1;
     for (Uint32 i=0; i<painter->swapchain_image_count; i++) {
         VkCommandBufferBeginInfo command_buffer_begin_info;
         command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         command_buffer_begin_info.pNext = NULL;
         command_buffer_begin_info.flags = 0;
         command_buffer_begin_info.pInheritanceInfo = NULL;
-        result = vkBeginCommandBuffer(painter->command_buffers[i], &command_buffer_begin_info);
-        if (result != VK_SUCCESS) {
-            warehouse_error_popup("Error in Vulkan Setup.", "Could not begin command buffers");
-            painter_cleanup(painter);
-            return SDL_FALSE;
-        }
         VkRenderPassBeginInfo render_pass_begin_info;
         render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         render_pass_begin_info.pNext = NULL;
-        render_pass_begin_info.renderPass = painter->render_pass;
-        render_pass_begin_info.framebuffer = painter->swapchain_framebuffers[i];
         render_pass_begin_info.renderArea.offset.x = 0;
         render_pass_begin_info.renderArea.offset.y = 0;
-        render_pass_begin_info.renderArea.extent = painter->swapchain_extent;
-        
-        VkClearValue clear_values[2];
-        VkClearColorValue color_value0 = { 1.0f, 0.0f, 0.0f, 1.0f };
-        VkClearColorValue color_value1 = { 0.0f, 0.0f, 0.0f, 0.0f };
-        VkClearDepthStencilValue depth_value0 = { 0.0f, 0 };
-        VkClearDepthStencilValue depth_value1 = { 1.0f, 0 };
-        clear_values[0].color = color_value0;
-        clear_values[1].color = color_value1;
-        clear_values[0].depthStencil = depth_value0;
-        clear_values[1].depthStencil = depth_value1;
-        render_pass_begin_info.clearValueCount = 2;
-        render_pass_begin_info.pClearValues = clear_values;
         VkBuffer vertex_buffers[1];
         VkDeviceSize offsets[1];
         offsets[0] = 0;
 
+        result = vkBeginCommandBuffer(painter->shadow_map_command_buffers[i], &command_buffer_begin_info);
+        if (result != VK_SUCCESS) return _painter_custom_error("Setup Error", "Could not begin sm command buffer");
+        render_pass_begin_info.renderPass = painter->shadow_map_render_pass;
+        render_pass_begin_info.framebuffer = painter->shadow_map_framebuffer;
+        // SameSizeShadowMapCheck
+        render_pass_begin_info.renderArea.extent.width = painter->shadow_map_size.x;
+        render_pass_begin_info.renderArea.extent.height = painter->shadow_map_size.y;
+        render_pass_begin_info.renderArea.extent = painter->swapchain_extent;
+        render_pass_begin_info.clearValueCount = 1;
+        render_pass_begin_info.pClearValues = shadow_map_clear_values;
+        vkCmdBeginRenderPass(painter->shadow_map_command_buffers[i], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+        for (Uint32 j=0; j<painter->num_shaders; j++) {
+            vertex_buffers[0] = painter->shaders[j].vertex_buffer;
+            vkCmdBindPipeline(painter->shadow_map_command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->shaders[j].shadow_map_pipeline);
+            vkCmdBindVertexBuffers(painter->shadow_map_command_buffers[i], 0, 1, vertex_buffers, offsets);
+            vkCmdBindIndexBuffer(painter->shadow_map_command_buffers[i], painter->shaders[j].index_buffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdBindDescriptorSets(painter->shadow_map_command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->shaders[j].pipeline_layout, 0, 1, &painter->shaders[j].descriptor_sets[i], 0, NULL);
+            vkCmdDrawIndexed(painter->shadow_map_command_buffers[i], painter->shaders[j].num_indices, 1, 0, 0, 0);
+        }
+        vkCmdEndRenderPass(painter->shadow_map_command_buffers[i]);
+        result = vkEndCommandBuffer(painter->shadow_map_command_buffers[i]);
+        if (result != VK_SUCCESS) return _painter_custom_error("Setup Error", "Could not end sm command buffer");
+
+        render_pass_begin_info.renderPass = painter->render_pass;
+        render_pass_begin_info.framebuffer = painter->swapchain_framebuffers[i];
+        render_pass_begin_info.renderArea.extent = painter->swapchain_extent;
+        render_pass_begin_info.clearValueCount = 2;
+        render_pass_begin_info.pClearValues = clear_values;
+        result = vkBeginCommandBuffer(painter->command_buffers[i], &command_buffer_begin_info);
+        if (result != VK_SUCCESS) return _painter_custom_error("Setup Error", "Could not begin command buffer");
         vkCmdBeginRenderPass(painter->command_buffers[i], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
+
+        vertex_buffers[0] = painter->shadow_map_shader->vertex_buffer;
+        vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->shadow_map_shader->pipeline);
+        vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
+        vkCmdBindIndexBuffer(painter->command_buffers[i], painter->shadow_map_shader->index_buffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->shadow_map_shader->pipeline_layout, 0, 1, &painter->shadow_map_shader->descriptor_sets[i], 0, NULL);
+        vkCmdDrawIndexed(painter->command_buffers[i], painter->shadow_map_shader->num_indices, 1, 0, 0, 0);
 
         vertex_buffers[0] = painter->skybox_shader->vertex_buffer;
         vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->skybox_shader->pipeline);
@@ -428,11 +444,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
 
         vkCmdEndRenderPass(painter->command_buffers[i]);
         result = vkEndCommandBuffer(painter->command_buffers[i]);
-        if (result != VK_SUCCESS) {
-            warehouse_error_popup("Error in Vulkan Setup.", "Could not end command buffers");
-            painter_cleanup(painter);
-            return SDL_FALSE;
-        }
+        if (result != VK_SUCCESS) return _painter_custom_error("Setup Error", "Could not end command buffer");
     }
     return SDL_TRUE;
 }
@@ -467,30 +479,44 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     painter->camera_position = painter->world->position;
     painter->uniform_buffer_object.camera_position = painter->camera_position;
     painter->uniform_buffer_object.view = look_at(painter->camera_position, target, painter->world->up_axis);
+    painter->uniform_buffer_object.state = 1;  // shadow map
 
     void* uniform_data;
     result = vkMapMemory(painter->device, painter->uniform_buffers_memory[image_index], 0, painter->uniform_buffer_size, 0, &uniform_data);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Rendering.", "Could not map uniform memory");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
+    if (result != VK_SUCCESS) return _painter_custom_error("Rendering Error", "Could not map uniform memory");
     SDL_memcpy(uniform_data, &painter->uniform_buffer_object, (size_t) painter->uniform_buffer_size);
-    vkUnmapMemory(painter->device, painter->uniform_buffers_memory[image_index]);
 
     void* ui_data;
     // TODO (16 Dec 2020 sam): Only map this memory if there is some text to be shown.
     // Since we are using an intermediate mode type UI, this might require us to clear the 
     // buffer before we stop loading data and stuff, but yes.
     result = vkMapMemory(painter->device, painter->ui_shader->vertex_staging_buffer_memory, 0, painter->ui_shader->vertex_staging_buffer_size, 0, &ui_data);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Rendering.", "Could not map ui vertices");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
+    if (result != VK_SUCCESS) return _painter_custom_error("Rendering Error", "Could not map ui vertices");
     SDL_memcpy(ui_data, painter->ui_shader->vertices, (size_t) painter->ui_shader->vertex_staging_buffer_size);
     vkUnmapMemory(painter->device, painter->ui_shader->vertex_staging_buffer_memory);
+    // TODO (23 Dec 2020 sam): Use single buffer for UI vertices. Don't use staging. It is not efficient if
+    // we have to update the data every frame.
     sdl_result = _painter_load_buffer_via_staging(painter, painter->ui_shader->vertices, &painter->ui_shader->vertex_staging_buffer_memory, &painter->ui_shader->vertex_staging_buffer, &painter->ui_shader->vertex_buffer, painter->ui_shader->vertex_staging_buffer_size);
+
+    VkSubmitInfo shadow_submit_info;
+    shadow_submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    shadow_submit_info.pNext = NULL;
+    shadow_submit_info.waitSemaphoreCount = 0;
+    shadow_submit_info.pWaitSemaphores = NULL;
+    shadow_submit_info.pWaitDstStageMask = NULL;
+    shadow_submit_info.commandBufferCount = 1;
+    shadow_submit_info.pCommandBuffers = &painter->shadow_map_command_buffers[image_index];
+    shadow_submit_info.signalSemaphoreCount = 0;
+    shadow_submit_info.pSignalSemaphores = NULL;
+    // TODO (23 Dec 2020 sam): Since we're forcibly waiting for the sm fence here, we don't need multiple.
+    vkResetFences(painter->device, 1, &painter->shadow_map_fences[painter->frame_index]);
+    result = vkQueueSubmit(painter->graphics_queue, 1, &shadow_submit_info, painter->shadow_map_fences[painter->frame_index]);
+    if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Render Error", "Could not submit to shadow queue");
+    vkWaitForFences(painter->device, 1, &painter->shadow_map_fences[painter->frame_index], VK_TRUE, UINT64_MAX);
+    painter->uniform_buffer_object.state = 1;  // full render
+    // TODO (23 Dec 2020 sam): We're just updating one field. Don't need a full memcpy.
+    SDL_memcpy(uniform_data, &painter->uniform_buffer_object, (size_t) painter->uniform_buffer_size);
+    vkUnmapMemory(painter->device, painter->uniform_buffers_memory[image_index]);
 
     if (painter->images_in_flight[image_index] != VK_NULL_HANDLE)
         vkWaitForFences(painter->device, 1, &painter->images_in_flight[image_index], VK_TRUE, UINT64_MAX);

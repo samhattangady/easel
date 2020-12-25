@@ -17,6 +17,7 @@ typedef enum {
     MODEL_SHADER,
     SKYBOX_SHADER,
     UI_SHADER,
+    SHADOW_MAP_SHADER,
     SHADERTYPE_COUNT,
 } ShaderType;
 
@@ -24,10 +25,13 @@ typedef struct {
     mat4 model;
     mat4 view;
     mat4 proj;
+    mat4 light_proj;
     vec3 camera_position;
     float time;
-    vec2 window_size;
     vec3 light_direction;
+    float padding;
+    vec2 window_size;
+    int state;
 } UniformBufferObject;
 
 typedef struct {
@@ -61,6 +65,7 @@ typedef struct {
     VkShaderModule fragment_shader_module;
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline;
+    VkPipeline shadow_map_pipeline;
     VkDescriptorPool descriptor_pool;
     VkDescriptorSet* descriptor_sets;
 } ShaderData;
@@ -77,15 +82,21 @@ typedef struct {
     VkImageView* swapchain_image_views;
     VkExtent2D swapchain_extent;
     VkRenderPass render_pass;
+    VkRenderPass shadow_map_render_pass;
     VkFramebuffer* swapchain_framebuffers;
+    VkFramebuffer* shadow_map_framebuffers;
+    VkFramebuffer shadow_map_framebuffer;
     VkCommandPool command_pool;
     VkSemaphore* image_available_semaphores;
     VkSemaphore* render_finished_semaphores;
     VkFence* in_flight_fences;
+    VkFence* shadow_map_fences;
     VkFence* images_in_flight;
+    VkFence* shadows_in_flight;
     VkQueue presentation_queue;
     VkFormat swapchain_image_format;
     VkCommandBuffer* command_buffers;
+    VkCommandBuffer* shadow_map_command_buffers;
     VkQueue graphics_queue;
     VkSampleCountFlagBits msaa_samples;
     SDL_bool buffer_resized;
@@ -101,9 +112,11 @@ typedef struct {
     VkImageView depth_image_view;
     vec3 camera_position;
     float camera_fov;
+    vec2ui shadow_map_size;
     Uint32 start_time;
     ShaderData* skybox_shader;
     ShaderData* ui_shader;
+    ShaderData* shadow_map_shader;
     Uint32 num_shaders;
     ShaderData* shaders;
     EsWorld* world;

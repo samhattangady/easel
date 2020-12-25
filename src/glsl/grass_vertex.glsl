@@ -6,8 +6,13 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 model;
     mat4 view;
     mat4 proj;
+    mat4 light_proj;
     vec3 camera_position;
     float time;
+    vec3 light_direction;
+    float padding;
+    vec2 window_size;
+    int state;
 } ubo;
 
 layout(location = 0) in vec3 inPosition;

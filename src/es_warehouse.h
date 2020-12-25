@@ -70,6 +70,7 @@ extern vec4 mat4_vec4_multiply(mat4 a, vec4 b);
 extern void print_mat4(mat4 a);
 extern void print_vec4(vec4 a);
 extern void print_vec3ui(vec3ui a);
+extern vec3 vec3_origin();
 extern mat4 identity_mat4();
 extern mat4 build_mat4(float a1, float a2, float a3, float a4,
                        float b1, float b2, float b3, float b4,
@@ -105,6 +106,7 @@ extern vec3 rotate_about_origin_xaxis(vec3 point, float angle);
 extern vec3 rotate_about_origin_yaxis(vec3 point, float angle);
 extern vec3 rotate_about_origin_zaxis(vec3 point, float angle);
 extern mat4 perspective_projection(float angle, float aspect_ratio, float near, float far);
+extern mat4 parallel_projection(float angle, float aspect_ratio, float near, float far);
 extern float deg_to_rad(float deg);
 extern float lerp(float start, float end, float val);
 extern float rand_pos();

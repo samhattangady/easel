@@ -26,10 +26,11 @@ extern SDL_bool _painter_custom_error(const char* header, const char* message);
 extern SDL_bool _painter_cleanup_error(EsPainter* painter, const char* header, const char* message);
 extern SDL_bool _painter_load_image_and_sampler(EsPainter* painter, const char* filepath, ShaderData* shader, Uint8* memory, int width, int height, int channels, SDL_bool from_memory, ShaderType shader_type);
 extern SDL_bool _painter_load_cubemap_and_sampler(EsPainter* painter, const char* filepath0, const char* filepath1, const char* filepath2, const char* filepath3, const char* filepath4, const char* filepath5, ShaderData* shader);
-extern SDL_bool _painter_create_framebuffers(EsPainter* painter);
+extern SDL_bool _painter_create_commandbuffers(EsPainter* painter);
 extern SDL_bool _painter_create_descriptor_sets(EsPainter* painter, ShaderData* shader);
 extern SDL_bool _painter_init_shader_data(EsPainter* painter, ShaderData* shader, ShaderType type);
 extern SDL_bool _painter_load_buffer_from_geom(EsPainter* painter, EsGeometry* geom, ShaderData* shader);
+extern SDL_bool _painter_shadow_map_init(EsPainter* painter);
 SDL_bool _painter_create_swapchain(EsPainter* painter);
 
 SDL_bool _painter_load_buffer_from_geom(EsPainter* painter, EsGeometry* geom, ShaderData* shader) {
@@ -77,18 +78,19 @@ SDL_bool _painter_load_buffer_from_geom(EsPainter* painter, EsGeometry* geom, Sh
     }
 
     sdl_result = _painter_load_buffer_via_staging(painter, shader->vertices, &shader->vertex_staging_buffer_memory, &shader->vertex_staging_buffer, &shader->vertex_buffer, shader->vertex_staging_buffer_size);
-    if (!sdl_result) _painter_cleanup_error(painter, "Could not copy vertices to buffer.", shader->shader_name);
+    if (!sdl_result) return _painter_cleanup_error(painter, "Could not copy vertices to buffer.", shader->shader_name);
     sdl_result = _painter_load_buffer_via_staging(painter, shader->indices, &shader->index_staging_buffer_memory, &shader->index_staging_buffer, &shader->index_buffer, shader->index_staging_buffer_size);
-    if (!sdl_result) _painter_cleanup_error(painter, "Could not copy indices to buffer.", shader->shader_name);
+    if (!sdl_result) return _painter_cleanup_error(painter, "Could not copy indices to buffer.", shader->shader_name);
     SDL_free(shader->vertices);
     SDL_free(shader->indices);
 
     return SDL_TRUE;
 }
 
-SDL_bool _painter_create_framebuffers(EsPainter* painter) {
+SDL_bool _painter_create_commandbuffers(EsPainter* painter) {
     VkResult result;
     painter->command_buffers = (VkCommandBuffer*) SDL_malloc(painter->swapchain_image_count * sizeof(VkCommandBuffer));
+    painter->shadow_map_command_buffers = (VkCommandBuffer*) SDL_malloc(painter->swapchain_image_count * sizeof(VkCommandBuffer));
     VkCommandBufferAllocateInfo command_buffer_allocate_info;
     command_buffer_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     command_buffer_allocate_info.pNext = NULL;
@@ -96,6 +98,12 @@ SDL_bool _painter_create_framebuffers(EsPainter* painter) {
     command_buffer_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     command_buffer_allocate_info.commandBufferCount = painter->swapchain_image_count;
     result = vkAllocateCommandBuffers(painter->device, &command_buffer_allocate_info, painter->command_buffers);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not allocate command buffers");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    result = vkAllocateCommandBuffers(painter->device, &command_buffer_allocate_info, painter->shadow_map_command_buffers);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not allocate command buffers");
         painter_cleanup(painter);
@@ -275,7 +283,6 @@ extern SDL_bool _painter_load_image_and_sampler(EsPainter* painter, const char* 
     VkDeviceSize tex_size;
     stbi_uc* pixels;
 
-    SDL_Log("loading image data");
     if (!from_memory) {
         pixels = stbi_load(filepath, &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
         if (!pixels) {
@@ -291,7 +298,6 @@ extern SDL_bool _painter_load_image_and_sampler(EsPainter* painter, const char* 
     }
     shader->mip_levels = (Uint32) (SDL_floor(warehouse_log_2(SDL_max((float) tex_width, (float) tex_height))) + 1.0f);
     tex_size = tex_width * tex_height * tex_channels;
-    SDL_Log("loading image data");
     sdl_result = _painter_create_buffer(painter, tex_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &tex_buffer, &tex_buffer_memory);
     if (!sdl_result) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture buffer");
@@ -307,24 +313,22 @@ extern SDL_bool _painter_load_image_and_sampler(EsPainter* painter, const char* 
     VkFormat image_format;
     if (tex_channels == 4)
         image_format = VK_FORMAT_R8G8B8A8_SRGB;
+    // TODO (18 Dec 2020 sam): Use 1 channel here for UI stuff
     else if (tex_channels == 1)
         image_format = VK_FORMAT_R8G8B8A8_SRGB;
         // image_format = VK_FORMAT_R8_SRGB;
-    SDL_Log("Creating image");
+    else
+        image_format = VK_FORMAT_R8G8B8A8_SRGB;
     sdl_result = _painter_create_image(painter, tex_width, tex_height, shader->mip_levels, VK_SAMPLE_COUNT_1_BIT, image_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &shader->texture_image, &shader->texture_image_memory, 1, SDL_FALSE);
     if (!sdl_result) return SDL_FALSE;
-    SDL_Log("Transitioning image");
     sdl_result = _painter_transition_image_layout(painter, &shader->texture_image, image_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, shader->mip_levels, 1);
     if (!sdl_result) return SDL_FALSE;
-    SDL_Log("Copying image to buffer");
     sdl_result = _painter_copy_buffer_to_image(painter, &tex_buffer, &shader->texture_image, tex_width, tex_height);
     if (!sdl_result) return SDL_FALSE;
     vkDestroyBuffer(painter->device, tex_buffer, NULL);
     vkFreeMemory(painter->device, tex_buffer_memory, NULL);
-    SDL_Log("Generating mipmap");
     sdl_result = _painter_generate_mipmaps(painter, &shader->texture_image, image_format, tex_width, tex_height, shader->mip_levels, shader_type);
     if (!sdl_result) return SDL_FALSE;
-    SDL_Log("creating image view");
     sdl_result = _painter_create_image_view(painter, image_format, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, shader->mip_levels, &shader->texture_image, &shader->texture_image_view);
     if (!sdl_result) return SDL_FALSE;
 
@@ -347,7 +351,6 @@ extern SDL_bool _painter_load_image_and_sampler(EsPainter* painter, const char* 
     sampler_create_info.maxLod = (float) shader->mip_levels;
     sampler_create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     sampler_create_info.unnormalizedCoordinates = VK_FALSE;
-    SDL_Log("creating sampler");
     result = vkCreateSampler(painter->device, &sampler_create_info, NULL, &shader->texture_sampler);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture image sampler");
@@ -367,6 +370,196 @@ extern SDL_bool _painter_cleanup_error(EsPainter* painter, const char* header, c
     warehouse_error_popup(header, message);
     painter_cleanup(painter);
     return SDL_FALSE;
+}
+
+SDL_bool _painter_shadow_map_init(EsPainter* painter) {
+    VkResult result;
+    SDL_bool sdl_result;
+
+    painter->shadow_map_shader->shader_name = "Shadow Map Shader";
+    painter->shadow_map_shader->vertex_shader = "data/spirv/quad_vertex.spv";
+    painter->shadow_map_shader->fragment_shader = "data/spirv/quad_fragment.spv";
+    /*
+    VkImageCreateInfo image_create_info;
+    image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_create_info.pNext = NULL;
+    image_create_info.flags = 0;
+    image_create_info.imageType = VK_IMAGE_TYPE_2D;
+    image_create_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+    image_create_info.extent.depth = 1;
+    image_create_info.extent.width = painter->shadow_map_size.x;
+    image_create_info.extent.height = painter->shadow_map_size.y;
+    image_create_info.mipLevels = 1;
+    image_create_info.arrayLayers = 1;
+    image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    image_create_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    image_create_info.queueFamilyIndexCount = 0;
+    image_create_info.pQueueFamilyIndices = NULL;
+    image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    result = vkCreateImage(painter->device, &image_create_info, NULL, &painter->shadow_map_shader->texture_image);
+    if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Setup Error", "Could not create image");
+    VkMemoryRequirements mem_requirements;
+    vkGetImageMemoryRequirements(painter->device, painter->shadow_map_shader->texture_image, &mem_requirements);
+    Uint32 memory_type_index = _painter_find_memory_type(painter, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &mem_requirements);
+    VkMemoryAllocateInfo memory_alloc_info;
+    memory_alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memory_alloc_info.pNext = NULL;
+    memory_alloc_info.allocationSize = mem_requirements.size;
+    memory_alloc_info.memoryTypeIndex = memory_type_index;
+    result = vkAllocateMemory(painter->device, &memory_alloc_info, NULL, &painter->shadow_map_shader->texture_image_memory);
+    if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Setup Error", "Could not alloc mem");
+    vkBindImageMemory(painter->device, painter->shadow_map_shader->texture_image, painter->shadow_map_shader->texture_image_memory, 0);
+    VkImageViewCreateInfo image_view_create_info;
+    image_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    image_view_create_info.pNext = NULL;
+    image_view_create_info.flags = 0;
+    image_view_create_info.image = painter->shadow_map_shader->texture_image;
+    image_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    image_view_create_info.format = VK_FORMAT_D32_SFLOAT;
+    image_view_create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    image_view_create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    image_view_create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    image_view_create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+    image_view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    image_view_create_info.subresourceRange.baseMipLevel = 0;
+    image_view_create_info.subresourceRange.levelCount = 1;
+    image_view_create_info.subresourceRange.baseArrayLayer = 0;
+    image_view_create_info.subresourceRange.layerCount = 1;
+    result = vkCreateImageView(painter->device, &image_view_create_info, NULL, &painter->shadow_map_shader->texture_image_view);
+    if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Setup Error", "Could not create image view");
+    */
+
+    VkSamplerCreateInfo sampler_create_info;
+    sampler_create_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    sampler_create_info.pNext = NULL;
+    sampler_create_info.flags = 0;
+    sampler_create_info.magFilter = VK_FILTER_LINEAR;
+    sampler_create_info.minFilter = VK_FILTER_LINEAR;
+    sampler_create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    sampler_create_info.addressModeU = VK_FILTER_LINEAR;
+    sampler_create_info.addressModeV = VK_FILTER_LINEAR;
+    sampler_create_info.addressModeW = VK_FILTER_LINEAR;
+    sampler_create_info.mipLodBias = 0.0f;
+    sampler_create_info.anisotropyEnable = VK_TRUE;
+    sampler_create_info.maxAnisotropy = 16.0f;
+    sampler_create_info.compareEnable = VK_FALSE;
+    sampler_create_info.compareOp = VK_COMPARE_OP_ALWAYS;
+    sampler_create_info.minLod = 0.0f;
+    sampler_create_info.maxLod = 1.0f;
+    sampler_create_info.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+    sampler_create_info.unnormalizedCoordinates = VK_FALSE;
+    result = vkCreateSampler(painter->device, &sampler_create_info, NULL, &painter->shadow_map_shader->texture_sampler);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create texture image sampler");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+
+    // Find Supported Format for Depth Buffer
+    // TODO (30 Oct 2020 sam): The depth_buffer stuff needs to be recreated on window resize
+    VkFormat desired_formats[] = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
+    VkFormat depth_buffer_format = VK_FORMAT_UNDEFINED;
+    VkImageTiling depth_image_tiling = VK_IMAGE_TILING_OPTIMAL;
+    VkFormatFeatureFlags depth_feature_flags = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    for (Uint32 i=0; i<3; i++) {
+        VkFormatProperties properties;
+        vkGetPhysicalDeviceFormatProperties(painter->physical_device, desired_formats[i], &properties);
+        if (depth_image_tiling == VK_IMAGE_TILING_OPTIMAL && (properties.optimalTilingFeatures & depth_feature_flags) == depth_feature_flags) {
+            depth_buffer_format = desired_formats[i];
+            break;
+        }
+    }
+    if (depth_buffer_format == VK_FORMAT_UNDEFINED) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not find suitable depth buffer format");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+
+    // SameSizeShadowMapCheck
+    sdl_result = _painter_create_image(painter, painter->swapchain_extent.width, painter->swapchain_extent.height, 1, VK_SAMPLE_COUNT_8_BIT, depth_buffer_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->shadow_map_shader->texture_image, &painter->shadow_map_shader->texture_image_memory, 1, SDL_FALSE);
+    if (!sdl_result) return _painter_custom_error("Setup Error", "depth_image");
+    sdl_result = _painter_create_image_view(painter, depth_buffer_format, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_VIEW_TYPE_2D, 1, &painter->shadow_map_shader->texture_image, &painter->shadow_map_shader->texture_image_view);
+    if (!sdl_result) return _painter_custom_error("Setup Error", "depth_image_view");
+    // sdl_result = _painter_transition_image_layout(painter, &painter->shadow_map_shader->texture_image, depth_buffer_format, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1, 1);
+    // if (!sdl_result) return SDL_FALSE;
+
+    VkAttachmentDescription depth_attachment;
+    depth_attachment.flags = 0;
+    depth_attachment.format = depth_buffer_format;
+    depth_attachment.samples = VK_SAMPLE_COUNT_8_BIT;
+    depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depth_attachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    VkAttachmentReference depth_attachment_reference;
+    depth_attachment_reference.attachment = 0;
+    depth_attachment_reference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    VkSubpassDescription subpass;
+    subpass.flags = 0;
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.inputAttachmentCount = 0;
+    subpass.pInputAttachments = NULL;
+    subpass.colorAttachmentCount = 0;
+    subpass.pColorAttachments = NULL;
+    subpass.pResolveAttachments = NULL;
+    subpass.pDepthStencilAttachment = &depth_attachment_reference;
+    subpass.preserveAttachmentCount = 0;
+    subpass.pPreserveAttachments = NULL;
+    // TODO (18 Dec 2020 sam): Why is the subpass dependency here null?
+    // VkSubpassDependency subpass_dependency;
+    // subpass_dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    // subpass_dependency.dstSubpass = 0;
+    // subpass_dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    // subpass_dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    // subpass_dependency.srcAccessMask = 0;
+    // subpass_dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    // subpass_dependency.dependencyFlags= 0;
+    VkAttachmentDescription attachments[1];
+    attachments[0] = depth_attachment;
+    VkRenderPassCreateInfo render_pass_create_info;
+    render_pass_create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    render_pass_create_info.pNext = NULL;
+    render_pass_create_info.flags = 0;
+    render_pass_create_info.attachmentCount = 1;
+    render_pass_create_info.pAttachments = attachments;
+    render_pass_create_info.subpassCount = 1;
+    render_pass_create_info.pSubpasses = &subpass;
+    render_pass_create_info.dependencyCount = 0;
+    render_pass_create_info.pDependencies = NULL;
+    result = vkCreateRenderPass(painter->device, &render_pass_create_info, NULL, &painter->shadow_map_render_pass);
+    if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Vulkan Setup Error", "Could not create renderpass");
+
+    painter->shadow_map_framebuffers = (VkFramebuffer*) SDL_malloc(painter->swapchain_image_count * sizeof(VkFramebuffer));
+    for (Uint32 i=0; i<painter->swapchain_image_count; i++) {
+        VkImageView image_view_attachments[1];
+        image_view_attachments[0] = painter->shadow_map_shader->texture_image_view;
+        VkFramebufferCreateInfo framebuffer_create_info;
+        framebuffer_create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebuffer_create_info.pNext = NULL;
+        framebuffer_create_info.flags = 0;
+        framebuffer_create_info.renderPass = painter->shadow_map_render_pass;
+        framebuffer_create_info.attachmentCount = 1;
+        framebuffer_create_info.pAttachments = image_view_attachments;
+        framebuffer_create_info.width = painter->shadow_map_size.x;
+        framebuffer_create_info.height = painter->shadow_map_size.y;
+        // SameSizeShadowMapCheck
+        framebuffer_create_info.width = painter->swapchain_extent.width;
+        framebuffer_create_info.height = painter->swapchain_extent.height;
+        framebuffer_create_info.layers = 1;
+        result = vkCreateFramebuffer(painter->device, &framebuffer_create_info, NULL, &painter->shadow_map_framebuffers[i]);
+        if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Vulkan Setup Error", "Could not create shadowmap framebuffer");
+        if (i == 0) {
+            result = vkCreateFramebuffer(painter->device, &framebuffer_create_info, NULL, &painter->shadow_map_framebuffer);
+            if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Vulkan Setup Error", "Could not create shadowmap framebuffer");
+        
+        }
+    }
+
+    return SDL_TRUE;
 }
 
 SDL_bool _painter_swapchain_renderpass_init(EsPainter* painter) {
@@ -479,7 +672,6 @@ SDL_bool _painter_swapchain_renderpass_init(EsPainter* painter) {
 
     Uint32 queue_family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(painter->physical_device, &queue_family_count, NULL);
-    SDL_Log("Found %i queue families.\n", queue_family_count);
     VkQueueFamilyProperties* queue_families = (VkQueueFamilyProperties*) SDL_malloc(queue_family_count * sizeof(VkQueueFamilyProperties));
     vkGetPhysicalDeviceQueueFamilyProperties(painter->physical_device, &queue_family_count, queue_families);
     int graphics_queue_family = -1;
@@ -609,7 +801,6 @@ SDL_bool _painter_swapchain_renderpass_init(EsPainter* painter) {
     Uint32 swapchain_image_count = surface_capabilities.minImageCount + 1;
     if (surface_capabilities.maxImageCount>0 && swapchain_image_count>surface_capabilities.maxImageCount)
         swapchain_image_count = surface_capabilities.maxImageCount;
-    SDL_Log("Image Count: %i\n", swapchain_image_count);
     VkSwapchainCreateInfoKHR swapchain_create_info;
     swapchain_create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     swapchain_create_info.pNext = NULL;
@@ -789,7 +980,6 @@ SDL_bool _painter_swapchain_renderpass_init(EsPainter* painter) {
     render_pass_create_info.pDependencies = &subpass_dependency;
     result = vkCreateRenderPass(painter->device, &render_pass_create_info, NULL, &painter->render_pass);
     if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Vulkan Setup Error", "Could not create renderpass");
-
     sdl_result = _painter_create_image(painter, painter->swapchain_extent.width, painter->swapchain_extent.height, 1, painter->msaa_samples, painter->swapchain_image_format, VK_IMAGE_TILING_OPTIMAL,  VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->color_image, &painter->color_image_memory, 1, SDL_FALSE);
     if (!sdl_result) return _painter_custom_error("Setup Error", "color_image");
     sdl_result = _painter_create_image_view(painter, painter->swapchain_image_format, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, 1, &painter->color_image, &painter->color_image_view);
@@ -957,7 +1147,6 @@ SDL_bool _painter_init_instance(EsPainter* painter) {
         return SDL_FALSE;
     }
     SDL_free(layer_properties);
-    SDL_Log("yes debug build\n");
 #endif
 
     VkInstanceCreateInfo instance_create_info;
@@ -1016,7 +1205,6 @@ SDL_bool _painter_init_instance(EsPainter* painter) {
 #else
     instance_create_info.enabledLayerCount = 0;
 #endif
-    SDL_Log("Creating Vulkan Instance\n");
     result = vkCreateInstance(&instance_create_info, NULL, &painter->instance);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create vulkan instance.");
@@ -1055,7 +1243,6 @@ SDL_bool _painter_select_physical_device(EsPainter* painter) {
         painter_cleanup(painter);
         return SDL_FALSE;
     }
-    SDL_Log("Found %i Vulkan Devices\n", device_count);
     VkPhysicalDevice* devices = (VkPhysicalDevice*) SDL_malloc(device_count * sizeof(VkPhysicalDevice));
     result = vkEnumeratePhysicalDevices(painter->instance, &device_count, devices);
     if (result != VK_SUCCESS) {
@@ -1094,7 +1281,6 @@ SDL_bool _painter_select_physical_device(EsPainter* painter) {
 
 SDL_bool _painter_create_synchronisation_elements(EsPainter* painter) {
     VkResult result;
-    SDL_Log("Creating Synchronisation Elements\n");
     // need to malloc here =P
     painter->image_available_semaphores = (VkSemaphore*) SDL_malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkSemaphore));
     painter->render_finished_semaphores = (VkSemaphore*) SDL_malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkSemaphore));
@@ -1103,30 +1289,22 @@ SDL_bool _painter_create_synchronisation_elements(EsPainter* painter) {
     semaphore_create_info.pNext = NULL;
     semaphore_create_info.flags = 0;
     painter->in_flight_fences = (VkFence*) SDL_malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkFence));
+    painter->shadow_map_fences = (VkFence*) SDL_malloc(MAX_FRAMES_IN_FLIGHT * sizeof(VkFence));
     painter->images_in_flight = (VkFence*) SDL_calloc(painter->swapchain_image_count, sizeof(VkFence));
+    painter->shadows_in_flight = (VkFence*) SDL_calloc(painter->swapchain_image_count, sizeof(VkFence));
     VkFenceCreateInfo fence_create_info;
     fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fence_create_info.pNext = NULL;
     fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
     for (Uint32 i=0; i<MAX_FRAMES_IN_FLIGHT; i++) {
         result = vkCreateSemaphore(painter->device, &semaphore_create_info, NULL, &painter->image_available_semaphores[i]);
-        if (result != VK_SUCCESS) {
-            warehouse_error_popup("Error in Vulkan Setup.", "Could not create image semaphore");
-            painter_cleanup(painter);
-            return SDL_FALSE;
-        }
+        if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Setup Error", "Could not create image semaphore");
         result = vkCreateSemaphore(painter->device, &semaphore_create_info, NULL, &painter->render_finished_semaphores[i]);
-        if (result != VK_SUCCESS) {
-            warehouse_error_popup("Error in Vulkan Setup.", "Could not create image semaphore");
-            painter_cleanup(painter);
-            return SDL_FALSE;
-        }
+        if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Setup Error", "Could not create image semaphore");
         result = vkCreateFence(painter->device, &fence_create_info, NULL, &painter->in_flight_fences[i]);
-        if (result != VK_SUCCESS) {
-            warehouse_error_popup("Error in Vulkan Setup.", "Could not create fence");
-            painter_cleanup(painter);
-            return SDL_FALSE;
-        }
+        if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Setup Error", "Coult not create fence");
+        result = vkCreateFence(painter->device, &fence_create_info, NULL, &painter->shadow_map_fences[i]);
+        if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Setup Error", "Coult not create fence");
     }
     return SDL_TRUE; 
 }
@@ -1157,6 +1335,7 @@ void _painter_cleanup_swapchain(EsPainter* painter) {
     vkDeviceWaitIdle(painter->device);
     _painter_shader_cleanup(painter, painter->skybox_shader);
     _painter_shader_cleanup(painter, painter->ui_shader);
+    _painter_shader_cleanup(painter, painter->shadow_map_shader);
     for (Uint32 i=0; i<painter->num_shaders; i++) {
         _painter_shader_cleanup(painter, &painter->shaders[i]);
     }
@@ -1164,6 +1343,12 @@ void _painter_cleanup_swapchain(EsPainter* painter) {
         for (Uint32 i=0; i<painter->swapchain_image_count; i++)
             vkDestroyFramebuffer(painter->device, painter->swapchain_framebuffers[i], NULL);
     }
+    if (painter->shadow_map_framebuffers) {
+        for (Uint32 i=0; i<painter->swapchain_image_count; i++)
+            vkDestroyFramebuffer(painter->device, painter->shadow_map_framebuffers[i], NULL);
+    }
+    if (painter->shadow_map_command_buffers)
+        vkFreeCommandBuffers(painter->device, painter->command_pool, painter->swapchain_image_count, painter->shadow_map_command_buffers);
     if (painter->command_buffers)
         vkFreeCommandBuffers(painter->device, painter->command_pool, painter->swapchain_image_count, painter->command_buffers);
     if (painter->color_image)
@@ -1180,6 +1365,8 @@ void _painter_cleanup_swapchain(EsPainter* painter) {
         vkFreeMemory(painter->device, painter->depth_image_memory, NULL);
     if (painter->render_pass)
         vkDestroyRenderPass(painter->device, painter->render_pass, NULL);
+    if (painter->shadow_map_render_pass)
+        vkDestroyRenderPass(painter->device, painter->shadow_map_render_pass, NULL);
     if (painter->swapchain_image_count > 0) {
         for (Uint32 i=0; i<painter->swapchain_image_count; i++)
             vkDestroyImageView(painter->device, painter->swapchain_image_views[i], NULL);
@@ -1222,6 +1409,8 @@ void _painter_shader_cleanup(EsPainter* painter, ShaderData* shader) {
         vkDestroyShaderModule(painter->device, shader->fragment_shader_module, NULL);
     if (shader->pipeline)
         vkDestroyPipeline(painter->device, shader->pipeline, NULL);
+    if (shader->shadow_map_pipeline)
+        vkDestroyPipeline(painter->device, shader->shadow_map_pipeline, NULL);
     if (shader->descriptor_set_layout)
         vkDestroyDescriptorSetLayout(painter->device, shader->descriptor_set_layout, NULL);
     if (shader->pipeline_layout)
@@ -1239,6 +1428,9 @@ void painter_cleanup(EsPainter* painter) {
     if (painter->in_flight_fences)
         for (Uint32 i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
             vkDestroyFence(painter->device, painter->in_flight_fences[i], NULL);
+    if (painter->shadow_map_fences)
+        for (Uint32 i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
+            vkDestroyFence(painter->device, painter->shadow_map_fences[i], NULL);
     if (painter->image_available_semaphores)
         for (Uint32 i=0; i<MAX_FRAMES_IN_FLIGHT; i++)
             vkDestroySemaphore(painter->device, painter->image_available_semaphores[i], NULL);
@@ -1258,6 +1450,7 @@ void painter_cleanup(EsPainter* painter) {
     if (painter->window)
         SDL_DestroyWindow(painter->window);
     SDL_free(painter->command_buffers);
+    SDL_free(painter->shadow_map_command_buffers);
     SDL_free(painter->swapchain_image_views);
     SDL_free(painter->swapchain_framebuffers);
     SDL_free(painter->uniform_buffers);
@@ -1705,7 +1898,6 @@ SDL_bool _painter_generate_mipmaps(EsPainter* painter, VkImage* image, VkFormat 
 
 SDL_bool _painter_load_shaders(EsPainter* painter, ShaderData* shader) {
     VkResult result;
-    SDL_Log("Loading shaders\n");
     Uint32* vertex_spirv;
     Sint64 vertex_shader_length;
     vertex_shader_length = painter_read_shader_file(shader->vertex_shader, &vertex_spirv);
@@ -1740,7 +1932,6 @@ SDL_bool _painter_load_shaders(EsPainter* painter, ShaderData* shader) {
     fragment_shader_module_create_info.flags = 0;
     fragment_shader_module_create_info.codeSize = fragment_shader_length;
     fragment_shader_module_create_info.pCode = fragment_spirv;
-    SDL_Log("Creating shader %s\n", shader->shader_name);
     result = vkCreateShaderModule(painter->device, &fragment_shader_module_create_info, NULL, &shader->fragment_shader_module);
     if (result != VK_SUCCESS) {
         warehouse_error_popup("Error in Vulkan Setup.", "Could not create fragment shader module.");
@@ -1787,7 +1978,21 @@ SDL_bool _painter_create_descriptor_set_layout(EsPainter* painter, ShaderData* s
 
 SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     VkResult result;
-    SDL_Log("Describing vertex bindings\n");
+    VkPipelineLayoutCreateInfo pipeline_layout_create_info;
+    pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipeline_layout_create_info.pNext = NULL;
+    pipeline_layout_create_info.flags = 0;
+    pipeline_layout_create_info.setLayoutCount = 1;
+    pipeline_layout_create_info.pSetLayouts = &shader->descriptor_set_layout;
+    pipeline_layout_create_info.pushConstantRangeCount = 0;
+    pipeline_layout_create_info.pPushConstantRanges = NULL;
+    result = vkCreatePipelineLayout(painter->device, &pipeline_layout_create_info, NULL, &shader->pipeline_layout);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create pipeline layout.");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+
     VkVertexInputBindingDescription vertex_input_binding_description;
     vertex_input_binding_description.binding = 0;
     vertex_input_binding_description.stride = sizeof(EsVertex);
@@ -1912,22 +2117,6 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     color_blend_state_create_info.blendConstants[1] = 0.0f;
     color_blend_state_create_info.blendConstants[2] = 0.0f;
     color_blend_state_create_info.blendConstants[3] = 0.0f;
-    VkPipelineLayoutCreateInfo pipeline_layout_create_info;
-    pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipeline_layout_create_info.pNext = NULL;
-    pipeline_layout_create_info.flags = 0;
-    pipeline_layout_create_info.setLayoutCount = 1;
-    pipeline_layout_create_info.pSetLayouts = &shader->descriptor_set_layout;
-    pipeline_layout_create_info.pushConstantRangeCount = 0;
-    pipeline_layout_create_info.pPushConstantRanges = NULL;
-    result = vkCreatePipelineLayout(painter->device, &pipeline_layout_create_info, NULL, &shader->pipeline_layout);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Vulkan Setup.", "Could not create pipeline layout.");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-
-    SDL_Log("Creating graphics pipeline\n");
     VkPipelineShaderStageCreateInfo shader_stages[2];
     shader_stages[0] = vertex_shader_stage_create_info;
     shader_stages[1] = fragment_shader_stage_create_info;
@@ -1973,11 +2162,22 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     graphics_pipeline_create_info.basePipelineHandle = VK_NULL_HANDLE;
     graphics_pipeline_create_info.basePipelineIndex = -1;
     result = vkCreateGraphicsPipelines(painter->device, VK_NULL_HANDLE, 1, &graphics_pipeline_create_info, NULL, &shader->pipeline);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Vulkan Setup.", "Could not create graphics pipeline");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
+    if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Error in Vulkan Setup.", "Could not create graphics pipeline");
+    // shadow map pipeline
+    // SameSizeShadowMapCheck
+    // viewport.width = (float) painter->shadow_map_size.x;
+    // viewport.height = (float) painter->shadow_map_size.y;
+    // scissor.extent.width = painter->shadow_map_size.x;
+    // scissor.extent.height = painter->shadow_map_size.y;
+    // viewport_state_create_info.pViewports = &viewport;
+    // viewport_state_create_info.pScissors = &scissor;
+    graphics_pipeline_create_info.pViewportState = &viewport_state_create_info;
+    // rasterization_state_create_info.rasterizerDiscardEnable = VK_TRUE;
+    graphics_pipeline_create_info.pRasterizationState = &rasterization_state_create_info;
+    graphics_pipeline_create_info.renderPass = painter->shadow_map_render_pass;
+    graphics_pipeline_create_info.pColorBlendState = NULL;
+    result = vkCreateGraphicsPipelines(painter->device, VK_NULL_HANDLE, 1, &graphics_pipeline_create_info, NULL, &shader->shadow_map_pipeline);
+    if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Error in Vulkan Setup.", "Could not create graphics pipeline");
     return SDL_TRUE;
 }
 
@@ -1993,10 +2193,11 @@ SDL_bool _painter_init_shader_data(EsPainter* painter, ShaderData* shader, Shade
          sdl_result = _painter_load_cubemap_and_sampler(painter, SKYBOX_MODEL_TEXTURE_PATH0, SKYBOX_MODEL_TEXTURE_PATH1, SKYBOX_MODEL_TEXTURE_PATH2, SKYBOX_MODEL_TEXTURE_PATH3, SKYBOX_MODEL_TEXTURE_PATH4, SKYBOX_MODEL_TEXTURE_PATH5, shader);
     else if (type == UI_SHADER)
         sdl_result = _painter_load_image_and_sampler(painter, shader->texture_filepath, shader, painter->ui->texture, painter->ui->tex_width, painter->ui->tex_height, 4, SDL_TRUE, type);
+    else if (type == SHADOW_MAP_SHADER)
+        sdl_result = SDL_TRUE;
     else
         sdl_result = _painter_load_image_and_sampler(painter, shader->texture_filepath, shader, NULL, 0, 0, 0, SDL_FALSE, type);
     if (!sdl_result) return _painter_custom_error("Texture Load Failed", shader->shader_name);
-    SDL_Log("textures loaded");
 
     VkMemoryPropertyFlags vertex_staging_property_flags =  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     VkMemoryPropertyFlags vertex_property_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
@@ -2015,7 +2216,6 @@ SDL_bool _painter_init_shader_data(EsPainter* painter, ShaderData* shader, Shade
     shader->index_staging_buffer_size = shader->num_indices * sizeof(Uint32);
     // TODO (21 Oct 2020 sam): Use a single vkAllocateMemory for both buffers, and manage memory using
     // the offsets and things.
-    SDL_Log("num vertices = %i num indices = %i\n", shader->num_vertices, shader->num_indices);
     sdl_result = _painter_create_buffer(painter, shader->index_staging_buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, index_staging_property_flags, &shader->index_staging_buffer, &shader->index_staging_buffer_memory);
     if (!sdl_result) return SDL_FALSE;
     shader->index_buffer_size = shader->num_indices * sizeof(Uint32);
@@ -2023,8 +2223,8 @@ SDL_bool _painter_init_shader_data(EsPainter* painter, ShaderData* shader, Shade
     if (!sdl_result) return SDL_FALSE;
 
     sdl_result = _painter_load_buffer_via_staging(painter, shader->vertices, &shader->vertex_staging_buffer_memory, &shader->vertex_staging_buffer, &shader->vertex_buffer, shader->vertex_staging_buffer_size);
-    if (!sdl_result) _painter_cleanup_error(painter, "Could not copy vertices to buffer.", shader->shader_name);
+    if (!sdl_result) return _painter_cleanup_error(painter, "Could not copy vertices to buffer.", shader->shader_name);
     sdl_result = _painter_load_buffer_via_staging(painter, shader->indices, &shader->index_staging_buffer_memory, &shader->index_staging_buffer, &shader->index_buffer, shader->index_staging_buffer_size);
-    if (!sdl_result) _painter_cleanup_error(painter, "Could not copy indices to buffer.", shader->shader_name);
+    if (!sdl_result) return _painter_cleanup_error(painter, "Could not copy indices to buffer.", shader->shader_name);
     return SDL_TRUE;
 }

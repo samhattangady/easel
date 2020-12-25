@@ -6,10 +6,13 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 model;
     mat4 view;
     mat4 proj;
+    mat4 light_proj;
     vec3 camera_position;
     float time;
-    vec2 window_size;
     vec3 light_direction;
+    float padding;
+    vec2 window_size;
+    int state;
 } ubo;
 
 layout(location = 0) in vec3 inPosition;
@@ -80,7 +83,11 @@ void main() {
     pos += vec3(0.3, 0.0, 0.3) * inColor.x * sin(ubo.time/1.4); 
     pos += vec3(0.3, 0.1, 0.0) * inColor.y * sin(ubo.time/2.2); 
     pos += vec3(0.2, 0.1, 0.3) * inColor.z * sin(ubo.time/3.7); 
-    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);
+    if (ubo.state == 0)
+        // gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);
+        gl_Position = ubo.light_proj * vec4(pos, 1.0);
+    else if (ubo.state == 1)
+        gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);
     fragColor = inColor;
     fragTexCoord = inTexCoord;
     time = ubo.time;

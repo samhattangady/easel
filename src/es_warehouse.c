@@ -22,6 +22,10 @@ void warehouse_error_popup(const char* error_header, const char* error_text) {
     return;
 }
 
+vec3 vec3_origin() {
+    return build_vec3(0.0f, 0.0f, 0.0f);
+}
+
 mat4 mat4_mat4_multiply(mat4 a, mat4 b) {
     mat4 result;
     result.a.x = a.a.x*b.a.x + a.a.y*b.b.x + a.a.z*b.c.x + a.a.w*b.d.x;    
@@ -328,7 +332,7 @@ vec3 rotate_about_origin_zaxis(vec3 point, float angle) {
     return rotate_about_origin_axis(point, angle, build_vec3(0.0f, 0.0f, 1.0f));
 }
 
-extern mat4 perspective_projection(float angle, float aspect_ratio, float near, float far) {
+mat4 perspective_projection(float angle, float aspect_ratio, float near, float far) {
     // https://www.scratchapixel.com/lessons/3d-basic-rendering/perspective-and-orthographic-projection-matrix/opengl-perspective-projection-matrix
     float r = (float) SDL_tan(angle/2.0f) * near;
     float t = r / aspect_ratio;
@@ -340,6 +344,20 @@ extern mat4 perspective_projection(float angle, float aspect_ratio, float near, 
         0.0f,   0.0f,   -((f+n)/(f-n)), -1.0f,
         0.0f,   0.0f,  -((2.0f*f*n)/(f-n)), 0.0f
     );
+}
+
+mat4 parallel_projection(float half_width, float aspect_ratio, float near, float far) {
+    float r = half_width;
+    float t = r / aspect_ratio;
+    float n = near;
+    float f = far;
+    return build_mat4(
+        1.0f/r, 0.0f, 0.0f, 0.0f,
+        0.0f, -1.0f/t, 0.0f, 0.0f,
+        0.0f, 0.0f, -2.0f/(f-n), -((f+n)/(f-n)),
+        0.0f, 0.0f, 0.0f, 1.0f        
+    );
+    
 }
 
 float deg_to_rad(float deg) {
