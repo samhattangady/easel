@@ -478,7 +478,7 @@ SDL_bool _painter_shadow_map_init(EsPainter* painter) {
     }
 
     // SameSizeShadowMapCheck
-    sdl_result = _painter_create_image(painter, painter->swapchain_extent.width, painter->swapchain_extent.height, 1, VK_SAMPLE_COUNT_8_BIT, depth_buffer_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->shadow_map_shader->texture_image, &painter->shadow_map_shader->texture_image_memory, 1, SDL_FALSE);
+    sdl_result = _painter_create_image(painter, painter->swapchain_extent.width, painter->swapchain_extent.height, 1, VK_SAMPLE_COUNT_1_BIT, depth_buffer_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->shadow_map_shader->texture_image, &painter->shadow_map_shader->texture_image_memory, 1, SDL_FALSE);
     if (!sdl_result) return _painter_custom_error("Setup Error", "depth_image");
     sdl_result = _painter_create_image_view(painter, depth_buffer_format, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_VIEW_TYPE_2D, 1, &painter->shadow_map_shader->texture_image, &painter->shadow_map_shader->texture_image_view);
     if (!sdl_result) return _painter_custom_error("Setup Error", "depth_image_view");
@@ -488,7 +488,7 @@ SDL_bool _painter_shadow_map_init(EsPainter* painter) {
     VkAttachmentDescription depth_attachment;
     depth_attachment.flags = 0;
     depth_attachment.format = depth_buffer_format;
-    depth_attachment.samples = VK_SAMPLE_COUNT_8_BIT;
+    depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
     depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -1347,6 +1347,8 @@ void _painter_cleanup_swapchain(EsPainter* painter) {
         for (Uint32 i=0; i<painter->swapchain_image_count; i++)
             vkDestroyFramebuffer(painter->device, painter->shadow_map_framebuffers[i], NULL);
     }
+    if (painter->shadow_map_framebuffer)
+        vkDestroyFramebuffer(painter->device, painter->shadow_map_framebuffer, NULL);
     if (painter->shadow_map_command_buffers)
         vkFreeCommandBuffers(painter->device, painter->command_pool, painter->swapchain_image_count, painter->shadow_map_command_buffers);
     if (painter->command_buffers)
@@ -2173,6 +2175,8 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     // viewport_state_create_info.pScissors = &scissor;
     graphics_pipeline_create_info.pViewportState = &viewport_state_create_info;
     // rasterization_state_create_info.rasterizerDiscardEnable = VK_TRUE;
+    multisample_state_create_info.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    graphics_pipeline_create_info.pMultisampleState = &multisample_state_create_info;
     graphics_pipeline_create_info.pRasterizationState = &rasterization_state_create_info;
     graphics_pipeline_create_info.renderPass = painter->shadow_map_render_pass;
     graphics_pipeline_create_info.pColorBlendState = NULL;

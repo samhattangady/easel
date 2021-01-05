@@ -228,10 +228,10 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     painter->shadow_map_shader->num_indices = 6;
     painter->shadow_map_shader->vertices = (EsVertex*) SDL_calloc(painter->shadow_map_shader->num_vertices, sizeof(EsVertex));
     painter->shadow_map_shader->indices = (Uint32*) SDL_malloc(painter->shadow_map_shader->num_indices * sizeof(Uint32));
-    painter->shadow_map_shader->vertices[0].pos = build_vec3(1.0f, 1.0f, 1.0f);
-    painter->shadow_map_shader->vertices[1].pos = build_vec3(1.0f, 0.0f, 1.0f);
-    painter->shadow_map_shader->vertices[2].pos = build_vec3(0.0f, 0.0f, 1.0f);
-    painter->shadow_map_shader->vertices[3].pos = build_vec3(0.0f, 1.0f, 1.0f);
+    painter->shadow_map_shader->vertices[0].pos = build_vec3(0.5f, 0.5f, 0.5f);
+    painter->shadow_map_shader->vertices[1].pos = build_vec3(0.5f, 0.0f, 0.5f);
+    painter->shadow_map_shader->vertices[2].pos = build_vec3(0.0f, 0.0f, 0.5f);
+    painter->shadow_map_shader->vertices[3].pos = build_vec3(0.0f, 0.5f, 0.5f);
     painter->shadow_map_shader->vertices[0].tex = build_vec2(1.0f, 1.0f);
     painter->shadow_map_shader->vertices[1].tex = build_vec2(1.0f, 0.0f);
     painter->shadow_map_shader->vertices[2].tex = build_vec2(0.0f, 0.0f);
