@@ -37,6 +37,7 @@ typedef struct {
 typedef struct {
     const char* shader_name;
     const char* vertex_shader;
+    const char* shadow_map_fragment_shader;
     const char* fragment_shader;
     const char* texture_filepath;
     EsVertex* vertices;
@@ -63,11 +64,14 @@ typedef struct {
     VkDescriptorSetLayout descriptor_set_layout;
     VkShaderModule vertex_shader_module;
     VkShaderModule fragment_shader_module;
+    VkShaderModule shadow_map_fragment_shader_module;
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline;
     VkPipeline shadow_map_pipeline;
     VkDescriptorPool descriptor_pool;
+    VkDescriptorPool shadow_map_descriptor_pool;
     VkDescriptorSet* descriptor_sets;
+    VkDescriptorSet* shadow_map_descriptor_sets;
 } ShaderData;
 
 typedef struct {

@@ -23,10 +23,19 @@ layout(location = 4) in vec4 inOthers;
 
 layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec2 fragTexCoord;
+layout(location = 2) out vec2 shadowTexCoord;
+layout(location = 3) out float expectedDepth;
 
 void main() {
     vec4 pos = vec4(inPosition, 1.0f);
-    gl_Position = ubo.proj * ubo.view * ubo.model * pos;
+    vec4 shadowPos = ubo.light_proj * pos;
+    if (ubo.state == 0)
+        gl_Position = shadowPos;
+    else if (ubo.state == 1)
+        gl_Position = ubo.proj * ubo.view * ubo.model * pos;
     fragColor = inColor;
     fragTexCoord = inTexCoord;
+    shadowTexCoord = shadowPos.xy / shadowPos.w;
+    shadowTexCoord = vec2(0.5) + (shadowTexCoord * 0.5);
+    expectedDepth = shadowPos.z / shadowPos.w;
 }

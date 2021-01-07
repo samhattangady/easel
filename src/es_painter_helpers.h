@@ -114,17 +114,19 @@ SDL_bool _painter_create_commandbuffers(EsPainter* painter) {
 
 SDL_bool _painter_create_descriptor_sets(EsPainter* painter, ShaderData* shader) {
     VkResult result;
-    VkDescriptorPoolSize* descriptor_pool_size = (VkDescriptorPoolSize*) SDL_malloc(2*sizeof(VkDescriptorPoolSize));
+    VkDescriptorPoolSize* descriptor_pool_size = (VkDescriptorPoolSize*) SDL_malloc(3*sizeof(VkDescriptorPoolSize));
     descriptor_pool_size[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     descriptor_pool_size[0].descriptorCount = painter->swapchain_image_count;
     descriptor_pool_size[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     descriptor_pool_size[1].descriptorCount = painter->swapchain_image_count;
+    descriptor_pool_size[2].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    descriptor_pool_size[2].descriptorCount = painter->swapchain_image_count;
     VkDescriptorPoolCreateInfo descriptor_pool_info;
     descriptor_pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     descriptor_pool_info.pNext = NULL;
     descriptor_pool_info.flags = 0;
     descriptor_pool_info.maxSets = painter->swapchain_image_count;
-    descriptor_pool_info.poolSizeCount = 2;
+    descriptor_pool_info.poolSizeCount = 3;
     descriptor_pool_info.pPoolSizes = descriptor_pool_size;
     result = vkCreateDescriptorPool(painter->device, &descriptor_pool_info, NULL, &shader->descriptor_pool);
     if (result != VK_SUCCESS) {
@@ -132,10 +134,18 @@ SDL_bool _painter_create_descriptor_sets(EsPainter* painter, ShaderData* shader)
         painter_cleanup(painter);
         return SDL_FALSE;
     }
+    descriptor_pool_info.poolSizeCount = 2;
+    result = vkCreateDescriptorPool(painter->device, &descriptor_pool_info, NULL, &shader->shadow_map_descriptor_pool);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create sm descriptor pool");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
     VkDescriptorSetLayout* layouts = (VkDescriptorSetLayout*) SDL_malloc(painter->swapchain_image_count * sizeof(VkDescriptorSetLayout));
     for (Uint32 i=0; i<painter->swapchain_image_count; i++)
         layouts[i] = shader->descriptor_set_layout;
     shader->descriptor_sets = (VkDescriptorSet*) SDL_malloc(painter->swapchain_image_count * sizeof(VkDescriptorSet));
+    shader->shadow_map_descriptor_sets = (VkDescriptorSet*) SDL_malloc(painter->swapchain_image_count * sizeof(VkDescriptorSet));
     VkDescriptorSetAllocateInfo descriptor_set_alloc_info;
     descriptor_set_alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     descriptor_set_alloc_info.pNext = NULL;
@@ -148,6 +158,13 @@ SDL_bool _painter_create_descriptor_sets(EsPainter* painter, ShaderData* shader)
         painter_cleanup(painter);
         return SDL_FALSE;
     }
+    descriptor_set_alloc_info.descriptorPool = shader->shadow_map_descriptor_pool;
+    result = vkAllocateDescriptorSets(painter->device, &descriptor_set_alloc_info, shader->shadow_map_descriptor_sets);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not allocate sm descriptor sets");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
     for (Uint32 i=0; i<painter->swapchain_image_count; i++) {
         VkDescriptorBufferInfo buffer_info;
         buffer_info.buffer = painter->uniform_buffers[i];
@@ -157,7 +174,11 @@ SDL_bool _painter_create_descriptor_sets(EsPainter* painter, ShaderData* shader)
         image_info.sampler = shader->texture_sampler;
         image_info.imageView = shader->texture_image_view;
         image_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        VkWriteDescriptorSet* descriptor_write = (VkWriteDescriptorSet*) SDL_malloc(2*sizeof(VkWriteDescriptorSet));
+        VkDescriptorImageInfo shadow_map_info;
+        shadow_map_info.sampler = painter->shadow_map_shader->texture_sampler;
+        shadow_map_info.imageView = painter->shadow_map_shader->texture_image_view;
+        shadow_map_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        VkWriteDescriptorSet* descriptor_write = (VkWriteDescriptorSet*) SDL_malloc(3*sizeof(VkWriteDescriptorSet));
         descriptor_write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         descriptor_write[0].pNext = NULL;
         descriptor_write[0].dstSet = shader->descriptor_sets[i];
@@ -178,6 +199,19 @@ SDL_bool _painter_create_descriptor_sets(EsPainter* painter, ShaderData* shader)
         descriptor_write[1].pBufferInfo = NULL;
         descriptor_write[1].pImageInfo = &image_info;
         descriptor_write[1].pTexelBufferView = NULL;
+        descriptor_write[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptor_write[2].pNext = NULL;
+        descriptor_write[2].dstSet = shader->descriptor_sets[i];
+        descriptor_write[2].dstBinding = 2;
+        descriptor_write[2].dstArrayElement = 0;
+        descriptor_write[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        descriptor_write[2].descriptorCount = 1;
+        descriptor_write[2].pBufferInfo = NULL;
+        descriptor_write[2].pImageInfo = &shadow_map_info;
+        descriptor_write[2].pTexelBufferView = NULL;
+        vkUpdateDescriptorSets(painter->device, 3, descriptor_write, 0, NULL);
+        descriptor_write[0].dstSet = shader->shadow_map_descriptor_sets[i];
+        descriptor_write[1].dstSet = shader->shadow_map_descriptor_sets[i];
         vkUpdateDescriptorSets(painter->device, 2, descriptor_write, 0, NULL);
     }
     return SDL_TRUE;
@@ -379,6 +413,7 @@ SDL_bool _painter_shadow_map_init(EsPainter* painter) {
     painter->shadow_map_shader->shader_name = "Shadow Map Shader";
     painter->shadow_map_shader->vertex_shader = "data/spirv/quad_vertex.spv";
     painter->shadow_map_shader->fragment_shader = "data/spirv/quad_fragment.spv";
+    painter->shadow_map_shader->shadow_map_fragment_shader = "data/spirv/quad_fragment.spv";
     /*
     VkImageCreateInfo image_create_info;
     image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -497,7 +532,7 @@ SDL_bool _painter_shadow_map_init(EsPainter* painter) {
     depth_attachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     VkAttachmentReference depth_attachment_reference;
     depth_attachment_reference.attachment = 0;
-    depth_attachment_reference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    depth_attachment_reference.layout = VK_IMAGE_LAYOUT_GENERAL;
     VkSubpassDescription subpass;
     subpass.flags = 0;
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -1389,6 +1424,8 @@ void _painter_shader_cleanup(EsPainter* painter, ShaderData* shader) {
         vkFreeMemory(painter->device, shader->texture_image_memory, NULL);
     if (shader->descriptor_pool)
         vkDestroyDescriptorPool(painter->device, shader->descriptor_pool, NULL);
+    if (shader->shadow_map_descriptor_pool)
+        vkDestroyDescriptorPool(painter->device, shader->shadow_map_descriptor_pool, NULL);
     if (shader->index_buffer)
         vkDestroyBuffer(painter->device, shader->index_buffer, NULL);
     if (shader->index_buffer_memory)
@@ -1409,6 +1446,8 @@ void _painter_shader_cleanup(EsPainter* painter, ShaderData* shader) {
         vkDestroyShaderModule(painter->device, shader->vertex_shader_module, NULL);
     if (shader->fragment_shader_module)
         vkDestroyShaderModule(painter->device, shader->fragment_shader_module, NULL);
+    if (shader->shadow_map_fragment_shader_module)
+        vkDestroyShaderModule(painter->device, shader->shadow_map_fragment_shader_module, NULL);
     if (shader->pipeline)
         vkDestroyPipeline(painter->device, shader->pipeline, NULL);
     if (shader->shadow_map_pipeline)
@@ -1940,6 +1979,28 @@ SDL_bool _painter_load_shaders(EsPainter* painter, ShaderData* shader) {
         painter_cleanup(painter);
         return SDL_FALSE;
     }
+    Uint32* shadow_map_fragment_spirv;
+    Sint64 shadow_map_fragment_shader_length;
+    shadow_map_fragment_shader_length = painter_read_shader_file(shader->shadow_map_fragment_shader, &shadow_map_fragment_spirv);
+    if (shadow_map_fragment_shader_length < 0) {
+        SDL_Log(shader->shader_name);
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not sm read fragment shader.");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    VkShaderModuleCreateInfo shadow_map_fragment_shader_module_create_info;
+    shadow_map_fragment_shader_module_create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    shadow_map_fragment_shader_module_create_info.pNext = NULL;
+    shadow_map_fragment_shader_module_create_info.flags = 0;
+    shadow_map_fragment_shader_module_create_info.codeSize = shadow_map_fragment_shader_length;
+    shadow_map_fragment_shader_module_create_info.pCode = shadow_map_fragment_spirv;
+    result = vkCreateShaderModule(painter->device, &shadow_map_fragment_shader_module_create_info, NULL, &shader->shadow_map_fragment_shader_module);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create sm fragment shader module.");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    SDL_free(shadow_map_fragment_spirv);
     SDL_free(fragment_spirv);
     SDL_free(vertex_spirv);
     return SDL_TRUE;
@@ -1959,14 +2020,21 @@ SDL_bool _painter_create_descriptor_set_layout(EsPainter* painter, ShaderData* s
     sampler_layout_binding.descriptorCount = 1;
     sampler_layout_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     sampler_layout_binding.pImmutableSamplers = NULL;
+    VkDescriptorSetLayoutBinding shadow_map_layout_binding;
+    shadow_map_layout_binding.binding = 2;
+    shadow_map_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    shadow_map_layout_binding.descriptorCount = 1;
+    shadow_map_layout_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    shadow_map_layout_binding.pImmutableSamplers = NULL;
     VkDescriptorSetLayoutBinding* bindings = (VkDescriptorSetLayoutBinding*) SDL_malloc(2*sizeof(VkDescriptorSetLayoutBinding));
     bindings[0] = ubo_layout_binding;
     bindings[1] = sampler_layout_binding;
+    bindings[2] = shadow_map_layout_binding;
     VkDescriptorSetLayoutCreateInfo descriptor_set_layout_create_info;
     descriptor_set_layout_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     descriptor_set_layout_create_info.pNext = NULL;
     descriptor_set_layout_create_info.flags = 0;
-    descriptor_set_layout_create_info.bindingCount = 2;
+    descriptor_set_layout_create_info.bindingCount = 3;
     descriptor_set_layout_create_info.pBindings = bindings;
     result = vkCreateDescriptorSetLayout(painter->device, &descriptor_set_layout_create_info, NULL, &shader->descriptor_set_layout);
     if (result != VK_SUCCESS) {
@@ -2035,7 +2103,7 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     fragment_shader_stage_create_info.pNext = NULL;
     fragment_shader_stage_create_info.flags = 0;
     fragment_shader_stage_create_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragment_shader_stage_create_info.module = shader->fragment_shader_module;
+    fragment_shader_stage_create_info.module = shader->shadow_map_fragment_shader_module;
     fragment_shader_stage_create_info.pName = "main";
     fragment_shader_stage_create_info.pSpecializationInfo = NULL;
     VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info;
@@ -2173,6 +2241,13 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     // scissor.extent.height = painter->shadow_map_size.y;
     // viewport_state_create_info.pViewports = &viewport;
     // viewport_state_create_info.pScissors = &scissor;
+    rasterization_state_create_info.depthBiasEnable = VK_TRUE;
+    rasterization_state_create_info.depthBiasConstantFactor = 4.0f;
+    rasterization_state_create_info.depthBiasClamp = 0.0f;
+    rasterization_state_create_info.depthBiasSlopeFactor = 1.5f;
+    fragment_shader_stage_create_info.module = shader->fragment_shader_module;
+    shader_stages[1] = fragment_shader_stage_create_info;
+    graphics_pipeline_create_info.pStages = shader_stages;
     graphics_pipeline_create_info.pViewportState = &viewport_state_create_info;
     // rasterization_state_create_info.rasterizerDiscardEnable = VK_TRUE;
     multisample_state_create_info.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;

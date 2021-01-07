@@ -3,6 +3,7 @@
 #extension GL_ARB_separate_shader_objects : enable
 
 layout(binding = 1) uniform sampler2D texSampler;
+// layout(binding = 2) uniform sampler2D shadowSampler;
 
 layout(location = 0) in vec3 fragColor;
 layout(location = 1) in vec2 fragTexCoord;
@@ -48,6 +49,8 @@ void main() {
         texCoord = rotate(texCoord, distance(texCoord, vec2(0.0)) * sin(time/2.7) * noise(inPos.xz) * 3.1415/8.0f);
     }
     vec4 col = texture(texSampler, texCoord);
+//     vec4 shadow_map = texture(shadowSampler, texCoord);
+    // col.r = shadow_map.r;
     if (col.a < 0.5)
         discard;
     float leaf_tint = 1.0;

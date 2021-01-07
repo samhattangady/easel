@@ -76,7 +76,10 @@ void main() {
     mat4 rotation_mat = rotation_matrix_axis(angle_to_camera, vec3(0,1.0,0));
     obj_pos = rotation_mat * obj_pos;
     pos += obj_pos-base_obj_pos;
-    gl_Position = ubo.proj * ubo.view * ubo.model * pos;
+    if (ubo.state == 0)
+        gl_Position = ubo.light_proj * pos;
+    else if (ubo.state == 1)
+        gl_Position = ubo.proj * ubo.view * ubo.model * pos;
     fragColor = inColor;
     fragTexCoord = inTexCoord;
 }

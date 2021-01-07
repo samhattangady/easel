@@ -84,7 +84,6 @@ void main() {
     pos += vec3(0.3, 0.1, 0.0) * inColor.y * sin(ubo.time/2.2); 
     pos += vec3(0.2, 0.1, 0.3) * inColor.z * sin(ubo.time/3.7); 
     if (ubo.state == 0)
-        // gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);
         gl_Position = ubo.light_proj * vec4(pos, 1.0);
     else if (ubo.state == 1)
         gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);

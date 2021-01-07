@@ -56,21 +56,26 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     grass_shader.shader_name = "Grass Shader";
     grass_shader.vertex_shader = "data/spirv/grass_vertex.spv";
     grass_shader.fragment_shader = "data/spirv/fragment.spv";
+    grass_shader.shadow_map_fragment_shader = "data/spirv/fragment.spv";
     grass_shader.texture_filepath = GRASS_MODEL_TEXTURE_PATH;
     tree_shader.shader_name = "Tree Shader";
     tree_shader.vertex_shader = "data/spirv/tree_vertex.spv";
     tree_shader.fragment_shader = "data/spirv/tree_fragment.spv";
+    tree_shader.shadow_map_fragment_shader = "data/spirv/tree_fragment.spv";
     tree_shader.texture_filepath = TREE_MODEL_TEXTURE_PATH;
     ground_shader.shader_name = "Ground Shader";
     ground_shader.vertex_shader = "data/spirv/vertex.spv";
     ground_shader.fragment_shader = "data/spirv/fragment.spv";
+    ground_shader.shadow_map_fragment_shader = "data/spirv/shadow_fragment.spv";
     ground_shader.texture_filepath = GROUND_MODEL_TEXTURE_PATH;
     painter->skybox_shader->shader_name = "Skybox Shader";
     painter->skybox_shader->vertex_shader = "data/spirv/skybox_vertex.spv";
     painter->skybox_shader->fragment_shader = "data/spirv/skybox_fragment.spv";
+    painter->skybox_shader->shadow_map_fragment_shader = "data/spirv/skybox_fragment.spv";
     painter->ui_shader->shader_name = "UI Shader";
     painter->ui_shader->vertex_shader = "data/spirv/ui_vertex.spv";
     painter->ui_shader->fragment_shader = "data/spirv/ui_fragment.spv";
+    painter->ui_shader->shadow_map_fragment_shader = "data/spirv/ui_fragment.spv";
 
     ret = tinyobj_parse_obj(&attrib, &shapes, &num_shapes, &materials,
                             &num_materials, GRASS_MODEL_PATH, _painter_read_obj_file, flags);
@@ -228,10 +233,10 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     painter->shadow_map_shader->num_indices = 6;
     painter->shadow_map_shader->vertices = (EsVertex*) SDL_calloc(painter->shadow_map_shader->num_vertices, sizeof(EsVertex));
     painter->shadow_map_shader->indices = (Uint32*) SDL_malloc(painter->shadow_map_shader->num_indices * sizeof(Uint32));
-    painter->shadow_map_shader->vertices[0].pos = build_vec3(0.5f, 0.5f, 0.5f);
-    painter->shadow_map_shader->vertices[1].pos = build_vec3(0.5f, 0.0f, 0.5f);
-    painter->shadow_map_shader->vertices[2].pos = build_vec3(0.0f, 0.0f, 0.5f);
-    painter->shadow_map_shader->vertices[3].pos = build_vec3(0.0f, 0.5f, 0.5f);
+    painter->shadow_map_shader->vertices[0].pos = build_vec3(1.0f, 1.0f, 0.5f);
+    painter->shadow_map_shader->vertices[1].pos = build_vec3(1.0f, -1.0f, 0.5f);
+    painter->shadow_map_shader->vertices[2].pos = build_vec3(-1.0f, -1.0f, 0.5f);
+    painter->shadow_map_shader->vertices[3].pos = build_vec3(-1.0f, 1.0f, 0.5f);
     painter->shadow_map_shader->vertices[0].tex = build_vec2(1.0f, 1.0f);
     painter->shadow_map_shader->vertices[1].tex = build_vec2(1.0f, 0.0f);
     painter->shadow_map_shader->vertices[2].tex = build_vec2(0.0f, 0.0f);
@@ -252,9 +257,9 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     painter->uniform_buffer_object.window_size = build_vec2(1024.0f, 768.0f);
     painter->camera_fov = 45.0f;
     painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 200.0f);
-    painter->uniform_buffer_object.light_direction = vec3_normalize(build_vec3(-1.0, -1.0, -1.0));
+    painter->uniform_buffer_object.light_direction = vec3_normalize(build_vec3(1.0, 1.0, 1.0));
     vec3 light_position = vec3_sub(vec3_origin(), vec3_scale(painter->uniform_buffer_object.light_direction, -20.0f));
-    mat4 light_projection = parallel_projection(1.0f, (1024.0f/768.0f), 0.1f, 200.0f);
+    mat4 light_projection = parallel_projection(1.0f, (1024.0f/768.0f), 0.1f, 51.0f);
     mat4 light_view = look_at(light_position, vec3_origin(), build_vec3(0.0f, 1.0f, 0.0f));
     painter->uniform_buffer_object.light_proj = mat4_mat4_multiply(light_view, light_projection);
 
@@ -396,7 +401,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
             vkCmdBindPipeline(painter->shadow_map_command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->shaders[j].shadow_map_pipeline);
             vkCmdBindVertexBuffers(painter->shadow_map_command_buffers[i], 0, 1, vertex_buffers, offsets);
             vkCmdBindIndexBuffer(painter->shadow_map_command_buffers[i], painter->shaders[j].index_buffer, 0, VK_INDEX_TYPE_UINT32);
-            vkCmdBindDescriptorSets(painter->shadow_map_command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->shaders[j].pipeline_layout, 0, 1, &painter->shaders[j].descriptor_sets[i], 0, NULL);
+            vkCmdBindDescriptorSets(painter->shadow_map_command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->shaders[j].pipeline_layout, 0, 1, &painter->shaders[j].shadow_map_descriptor_sets[i], 0, NULL);
             vkCmdDrawIndexed(painter->shadow_map_command_buffers[i], painter->shaders[j].num_indices, 1, 0, 0, 0);
         }
         vkCmdEndRenderPass(painter->shadow_map_command_buffers[i]);
@@ -412,12 +417,14 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         if (result != VK_SUCCESS) return _painter_custom_error("Setup Error", "Could not begin command buffer");
         vkCmdBeginRenderPass(painter->command_buffers[i], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
+        /*
         vertex_buffers[0] = painter->shadow_map_shader->vertex_buffer;
         vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->shadow_map_shader->pipeline);
         vkCmdBindVertexBuffers(painter->command_buffers[i], 0, 1, vertex_buffers, offsets);
         vkCmdBindIndexBuffer(painter->command_buffers[i], painter->shadow_map_shader->index_buffer, 0, VK_INDEX_TYPE_UINT32);
         vkCmdBindDescriptorSets(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->shadow_map_shader->pipeline_layout, 0, 1, &painter->shadow_map_shader->descriptor_sets[i], 0, NULL);
         vkCmdDrawIndexed(painter->command_buffers[i], painter->shadow_map_shader->num_indices, 1, 0, 0, 0);
+        */
 
         vertex_buffers[0] = painter->skybox_shader->vertex_buffer;
         vkCmdBindPipeline(painter->command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, painter->skybox_shader->pipeline);
@@ -479,7 +486,7 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     painter->camera_position = painter->world->position;
     painter->uniform_buffer_object.camera_position = painter->camera_position;
     painter->uniform_buffer_object.view = look_at(painter->camera_position, target, painter->world->up_axis);
-    painter->uniform_buffer_object.state = 1;  // shadow map
+    painter->uniform_buffer_object.state = 0;  // shadow map
 
     void* uniform_data;
     result = vkMapMemory(painter->device, painter->uniform_buffers_memory[image_index], 0, painter->uniform_buffer_size, 0, &uniform_data);
