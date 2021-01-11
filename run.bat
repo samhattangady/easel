@@ -1,1 +1,1 @@
-build && src\compile && play
+build && splay && src\compile && play

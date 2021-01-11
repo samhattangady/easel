@@ -55,8 +55,8 @@ SDL_bool _painter_load_data(EsPainter* painter) {
 
     grass_shader.shader_name = "Grass Shader";
     grass_shader.vertex_shader = "data/spirv/grass_vertex.spv";
-    grass_shader.fragment_shader = "data/spirv/fragment.spv";
-    grass_shader.shadow_map_fragment_shader = "data/spirv/fragment.spv";
+    grass_shader.fragment_shader = "data/spirv/base_fragment.spv";
+    grass_shader.shadow_map_fragment_shader = "data/spirv/base_fragment.spv";
     grass_shader.texture_filepath = GRASS_MODEL_TEXTURE_PATH;
     tree_shader.shader_name = "Tree Shader";
     tree_shader.vertex_shader = "data/spirv/tree_vertex.spv";
@@ -64,9 +64,9 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     tree_shader.shadow_map_fragment_shader = "data/spirv/tree_fragment.spv";
     tree_shader.texture_filepath = TREE_MODEL_TEXTURE_PATH;
     ground_shader.shader_name = "Ground Shader";
-    ground_shader.vertex_shader = "data/spirv/vertex.spv";
-    ground_shader.fragment_shader = "data/spirv/fragment.spv";
-    ground_shader.shadow_map_fragment_shader = "data/spirv/shadow_fragment.spv";
+    ground_shader.vertex_shader = "data/spirv/base_sm_vertex.spv";
+    ground_shader.fragment_shader = "data/spirv/base_fragment.spv";
+    ground_shader.shadow_map_fragment_shader = "data/spirv/base_sm_fragment.spv";
     ground_shader.texture_filepath = GROUND_MODEL_TEXTURE_PATH;
     painter->skybox_shader->shader_name = "Skybox Shader";
     painter->skybox_shader->vertex_shader = "data/spirv/skybox_vertex.spv";

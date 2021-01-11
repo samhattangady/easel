@@ -1,29 +1,3 @@
-#version 450
-#pragma shader_stage(vertex)
-#extension GL_ARB_separate_shader_objects : enable
-
-layout(binding = 0) uniform UniformBufferObject {
-    mat4 model;
-    mat4 view;
-    mat4 proj;
-    mat4 light_proj;
-    vec3 camera_position;
-    float time;
-    vec3 light_direction;
-    float padding;
-    vec2 window_size;
-    int state;
-} ubo;
-
-layout(location = 0) in vec3 inPosition;
-layout(location = 1) in vec3 inColor;
-layout(location = 2) in vec2 inTexCoord;
-layout(location = 3) in vec3 inNormal;
-layout(location = 4) in vec4 inOthers;
-
-layout(location = 0) out vec3 fragColor;
-layout(location = 1) out vec2 fragTexCoord;
-
 float rand(float n) { return fract(sin(n) * 43758.5453123); }
 float rand(vec2 n) { return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453); }
 
@@ -61,7 +35,7 @@ mat4 rotation_matrix_axis(float angle, vec3 axis) {
     return rotation;
 }
 
-void main() {
+vec4 getPos() {
     vec4 pos = vec4(inPosition, 1.0f);
     vec4 base_obj_pos = vec4(inColor, 1.0f);
     vec4 obj_pos = vec4(inColor, 1.0f);
@@ -76,10 +50,5 @@ void main() {
     mat4 rotation_mat = rotation_matrix_axis(angle_to_camera, vec3(0,1.0,0));
     obj_pos = rotation_mat * obj_pos;
     pos += obj_pos-base_obj_pos;
-    if (ubo.state == 0)
-        gl_Position = ubo.light_proj * pos;
-    else if (ubo.state == 1)
-        gl_Position = ubo.proj * ubo.view * ubo.model * pos;
-    fragColor = inColor;
-    fragTexCoord = inTexCoord;
+    return pos;
 }

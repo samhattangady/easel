@@ -12,6 +12,6 @@
 
 @echo off
 pushd data\spirv\
-"C:\VulkanSDK\1.2.154.1\Bin32\glslc.exe" -c ..\..\src\glsl\shadow_map_vertex.glsl ..\..\src\glsl\vertex.glsl ..\..\src\glsl\fragment.glsl ..\..\src\glsl\tree_fragment.glsl ..\..\src\glsl\tree_vertex.glsl ..\..\src\glsl\grass_vertex.glsl ..\..\src\glsl\skybox_vertex.glsl ..\..\src\glsl\skybox_fragment.glsl ..\..\src\glsl\ui_fragment.glsl ..\..\src\glsl\ui_vertex.glsl ..\..\src\glsl\shadow_map_vertex.glsl ..\..\src\glsl\quad_vertex.glsl ..\..\src\glsl\quad_fragment.glsl  ..\..\src\glsl\shadow_fragment.glsl
+"C:\VulkanSDK\1.2.154.1\Bin32\glslc.exe" -c ..\..\shaders\tree_vertex.glsl ..\..\shaders\tree_sm_vertex.glsl ..\..\shaders\tree_fragment.glsl ..\..\shaders\tree_sm_fragment.glsl ..\..\shaders\skybox_vertex.glsl ..\..\shaders\skybox_fragment.glsl ..\..\shaders\grass_vertex.glsl ..\..\shaders\grass_sm_vertex.glsl ..\..\shaders\grass_fragment.glsl ..\..\shaders\grass_sm_fragment.glsl ..\..\shaders\ui_vertex.glsl ..\..\shaders\ui_sm_vertex.glsl ..\..\shaders\ui_fragment.glsl ..\..\shaders\ui_sm_fragment.glsl ..\..\shaders\base_vertex.glsl ..\..\shaders\base_sm_vertex.glsl ..\..\shaders\base_fragment.glsl ..\..\shaders\base_sm_fragment.glsl
 popd
 echo "Complete"

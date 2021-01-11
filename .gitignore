@@ -12,3 +12,5 @@ SDL2.dll
 build/
 gbuild/
 tbuild/
+sbuild/
+shaders/

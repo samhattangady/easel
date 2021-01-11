@@ -412,9 +412,9 @@ SDL_bool _painter_shadow_map_init(EsPainter* painter) {
     SDL_bool sdl_result;
 
     painter->shadow_map_shader->shader_name = "Shadow Map Shader";
-    painter->shadow_map_shader->vertex_shader = "data/spirv/quad_vertex.spv";
-    painter->shadow_map_shader->fragment_shader = "data/spirv/quad_fragment.spv";
-    painter->shadow_map_shader->shadow_map_fragment_shader = "data/spirv/quad_fragment.spv";
+    painter->shadow_map_shader->vertex_shader = "data/spirv/base_vertex.spv";
+    painter->shadow_map_shader->fragment_shader = "data/spirv/base_fragment.spv";
+    painter->shadow_map_shader->shadow_map_fragment_shader = "data/spirv/base_fragment.spv";
     /*
     VkImageCreateInfo image_create_info;
     image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1944,6 +1944,7 @@ SDL_bool _painter_load_shaders(EsPainter* painter, ShaderData* shader) {
     Sint64 vertex_shader_length;
     vertex_shader_length = painter_read_shader_file(shader->vertex_shader, &vertex_spirv);
     if (vertex_shader_length < 0) {
+        SDL_Log("%s shader", shader->shader_name);
         warehouse_error_popup("Error in Vulkan Setup.", "Could not read vertex shader.");
         painter_cleanup(painter);
         return SDL_FALSE;

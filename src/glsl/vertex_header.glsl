@@ -22,12 +22,9 @@ layout(location = 3) in vec3 inNormal;
 layout(location = 4) in vec4 inOthers;
 
 layout(location = 0) out vec3 fragColor;
-layout(location = 1) out vec3 fragTexCoord;  // This is different for skybox
-
-void main() {
-    vec3 pos = inPosition;
-    gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);
-    fragColor = inColor;
-    fragTexCoord = inPosition;
-}
-
+layout(location = 1) out vec2 fragTexCoord;
+layout(location = 2) out float time;
+layout(location = 3) out vec3 outPos;
+layout(location = 4) out vec3 outColor;
+layout(location = 5) out vec3 outNormal;
+layout(location = 6) out vec3 lightDirection;

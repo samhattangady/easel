@@ -1,0 +1,3 @@
+    outColor = col;
+}
+
