@@ -46,8 +46,8 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     // SameSizeShadowMapCheck
     painter->shadow_map_size.x = SHADOW_PASS_SIZE;
     painter->shadow_map_size.y = SHADOW_PASS_SIZE;
-    painter->shadow_map_size.x = 1024;
-    painter->shadow_map_size.y = 768;
+    // painter->shadow_map_size.x = 1024;
+    // painter->shadow_map_size.y = 768;
 
     ShaderData tree_shader = painter->shaders[0];
     ShaderData ground_shader = painter->shaders[1];
@@ -392,7 +392,7 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         // SameSizeShadowMapCheck
         render_pass_begin_info.renderArea.extent.width = painter->shadow_map_size.x;
         render_pass_begin_info.renderArea.extent.height = painter->shadow_map_size.y;
-        render_pass_begin_info.renderArea.extent = painter->swapchain_extent;
+        // render_pass_begin_info.renderArea.extent = painter->swapchain_extent;
         render_pass_begin_info.clearValueCount = 1;
         render_pass_begin_info.pClearValues = shadow_map_clear_values;
         vkCmdBeginRenderPass(painter->shadow_map_command_buffers[i], &render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);

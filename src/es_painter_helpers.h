@@ -177,6 +177,7 @@ SDL_bool _painter_create_descriptor_sets(EsPainter* painter, ShaderData* shader)
         VkDescriptorImageInfo shadow_map_info;
         shadow_map_info.sampler = painter->shadow_map_shader->texture_sampler;
         shadow_map_info.imageView = painter->shadow_map_shader->texture_image_view;
+        // TODO (11 Jan 2021 sam): Have kept this as general now. See if it should be something else.
         shadow_map_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
         VkWriteDescriptorSet* descriptor_write = (VkWriteDescriptorSet*) SDL_malloc(3*sizeof(VkWriteDescriptorSet));
         descriptor_write[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -513,7 +514,7 @@ SDL_bool _painter_shadow_map_init(EsPainter* painter) {
     }
 
     // SameSizeShadowMapCheck
-    sdl_result = _painter_create_image(painter, painter->swapchain_extent.width, painter->swapchain_extent.height, 1, VK_SAMPLE_COUNT_1_BIT, depth_buffer_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->shadow_map_shader->texture_image, &painter->shadow_map_shader->texture_image_memory, 1, SDL_FALSE);
+    sdl_result = _painter_create_image(painter, painter->shadow_map_size.x, painter->shadow_map_size.y, 1, VK_SAMPLE_COUNT_1_BIT, depth_buffer_format, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &painter->shadow_map_shader->texture_image, &painter->shadow_map_shader->texture_image_memory, 1, SDL_FALSE);
     if (!sdl_result) return _painter_custom_error("Setup Error", "depth_image");
     sdl_result = _painter_create_image_view(painter, depth_buffer_format, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_VIEW_TYPE_2D, 1, &painter->shadow_map_shader->texture_image, &painter->shadow_map_shader->texture_image_view);
     if (!sdl_result) return _painter_custom_error("Setup Error", "depth_image_view");
@@ -529,7 +530,7 @@ SDL_bool _painter_shadow_map_init(EsPainter* painter) {
     depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    depth_attachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    depth_attachment.finalLayout = VK_IMAGE_LAYOUT_GENERAL;
     VkAttachmentReference depth_attachment_reference;
     depth_attachment_reference.attachment = 0;
     depth_attachment_reference.layout = VK_IMAGE_LAYOUT_GENERAL;
@@ -582,8 +583,8 @@ SDL_bool _painter_shadow_map_init(EsPainter* painter) {
         framebuffer_create_info.width = painter->shadow_map_size.x;
         framebuffer_create_info.height = painter->shadow_map_size.y;
         // SameSizeShadowMapCheck
-        framebuffer_create_info.width = painter->swapchain_extent.width;
-        framebuffer_create_info.height = painter->swapchain_extent.height;
+        // framebuffer_create_info.width = painter->swapchain_extent.width;
+        // framebuffer_create_info.height = painter->swapchain_extent.height;
         framebuffer_create_info.layers = 1;
         result = vkCreateFramebuffer(painter->device, &framebuffer_create_info, NULL, &painter->shadow_map_framebuffers[i]);
         if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Vulkan Setup Error", "Could not create shadowmap framebuffer");
@@ -2235,12 +2236,12 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     if (result != VK_SUCCESS) return _painter_cleanup_error(painter, "Error in Vulkan Setup.", "Could not create graphics pipeline");
     // shadow map pipeline
     // SameSizeShadowMapCheck
-    // viewport.width = (float) painter->shadow_map_size.x;
-    // viewport.height = (float) painter->shadow_map_size.y;
-    // scissor.extent.width = painter->shadow_map_size.x;
-    // scissor.extent.height = painter->shadow_map_size.y;
-    // viewport_state_create_info.pViewports = &viewport;
-    // viewport_state_create_info.pScissors = &scissor;
+    viewport.width = (float) painter->shadow_map_size.x;
+    viewport.height = (float) painter->shadow_map_size.y;
+    scissor.extent.width = painter->shadow_map_size.x;
+    scissor.extent.height = painter->shadow_map_size.y;
+    viewport_state_create_info.pViewports = &viewport;
+    viewport_state_create_info.pScissors = &scissor;
     rasterization_state_create_info.depthBiasEnable = VK_TRUE;
     rasterization_state_create_info.depthBiasConstantFactor = 4.0f;
     rasterization_state_create_info.depthBiasClamp = 0.0f;
