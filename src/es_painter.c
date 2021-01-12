@@ -26,6 +26,8 @@
 #define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skybox/right.jpg"
 #define TREE_INSTANCES 1
 #define TREE_MODEL_TEXTURE_PATH "data/img/tree.png"
+#define PLANE_MODEL_PATH "data/obj/plane.obj"
+#define PLANE_MODEL_TEXUTRE_PATH "data/img/tree.png"
 #define GROUND_MODEL_TEXTURE_PATH "data/img/ground.png"
 #define GROUND_NUM_VERTICES_SIDE 30
 #define SHADOW_PASS_SIZE 2048
@@ -52,6 +54,7 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     ShaderData tree_shader = painter->shaders[0];
     ShaderData ground_shader = painter->shaders[1];
     ShaderData grass_shader = painter->shaders[2];
+    ShaderData plane_shader = painter->shaders[3];
 
     grass_shader.shader_name = "Grass Shader";
     grass_shader.vertex_shader = "data/spirv/grass_vertex.spv";
@@ -71,6 +74,12 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     ground_shader.fragment_shader = "data/spirv/base_fragment.spv";
     ground_shader.shadow_map_fragment_shader = "data/spirv/base_sm_fragment.spv";
     ground_shader.texture_filepath = GROUND_MODEL_TEXTURE_PATH;
+    plane_shader.shader_name = "Plane Shader";
+    plane_shader.vertex_shader = "data/spirv/base_vertex.spv";
+    plane_shader.shadow_map_vertex_shader = "data/spirv/base_sm_vertex.spv";
+    plane_shader.fragment_shader = "data/spirv/base_fragment.spv";
+    plane_shader.shadow_map_fragment_shader = "data/spirv/base_sm_fragment.spv";
+    plane_shader.texture_filepath = PLANE_MODEL_TEXUTRE_PATH;
     painter->skybox_shader->shader_name = "Skybox Shader";
     painter->skybox_shader->vertex_shader = "data/spirv/skybox_vertex.spv";
     painter->skybox_shader->shadow_map_vertex_shader = "data/spirv/skybox_vertex.spv";
@@ -234,6 +243,42 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         }
     }
 
+    ret = tinyobj_parse_obj(&attrib, &shapes, &num_shapes, &materials,
+                            &num_materials, PLANE_MODEL_PATH, _painter_read_obj_file, flags);
+    if (ret != TINYOBJ_SUCCESS) {
+        warehouse_error_popup("Error in Setup.", "Could not load model");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    plane_shader.num_vertices = attrib.num_vertices;
+    plane_shader.vertices = (EsVertex*) SDL_malloc(painter->skybox_shader->num_vertices * sizeof(EsVertex));
+    plane_shader.num_indices = attrib.num_faces;
+    plane_shader.indices = (Uint32*) SDL_malloc(painter->skybox_shader->num_indices * sizeof(Uint32));
+    if (num_shapes != 1) {
+        warehouse_error_popup("Error in Setup.", "Currently only support obj with 1 shape");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    for (Uint32 i=0; i<attrib.num_vertices; i++) {
+        EsVertex vert;
+        vert.pos.x = attrib.vertices[i*3 + 0];
+        vert.pos.z = attrib.vertices[i*3 + 1];
+        vert.pos.y = 5.0f + attrib.vertices[i*3 + 2];
+        vert.color.x = 0.0f;
+        vert.color.y = 0.0f;
+        vert.color.z = 0.0f;
+        plane_shader.vertices[i] = vert;
+    }
+    for (Uint32 i=0; i<attrib.num_faces; i++) {
+        tinyobj_vertex_index_t face = attrib.faces[i];
+        plane_shader.indices[i] = face.v_idx;
+        // painter->skybox_shader->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
+        // painter->skybox_shader->vertices[face.v_idx].tex.y = 1.0f - attrib.texcoords[face.vt_idx*2 + 1];
+    }
+    tinyobj_attrib_free(&attrib);
+    tinyobj_shapes_free(shapes, num_shapes);
+    tinyobj_materials_free(materials, num_materials);
+
     painter->shadow_map_shader->num_vertices = 4;
     painter->shadow_map_shader->num_indices = 6;
     painter->shadow_map_shader->vertices = (EsVertex*) SDL_calloc(painter->shadow_map_shader->num_vertices, sizeof(EsVertex));
@@ -257,6 +302,7 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     painter->shaders[0] = tree_shader;
     painter->shaders[1] = ground_shader;
     painter->shaders[2] = grass_shader;
+    painter->shaders[3] = plane_shader;
 
     painter->uniform_buffer_object.model = identity_mat4();
     painter->uniform_buffer_object.window_size = build_vec2(1024.0f, 768.0f);
@@ -276,7 +322,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
 
     sdl_result = _painter_initialise_sdl_window(painter, "Easel");
     if (!sdl_result) return SDL_FALSE;
-    painter->num_shaders = 3;
+    painter->num_shaders = 4;
     painter->skybox_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
     painter->ui_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
     painter->shadow_map_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
@@ -295,12 +341,10 @@ SDL_bool painter_initialise(EsPainter* painter) {
     painter->frame_index = 0;
     painter->buffer_resized = SDL_FALSE;
 
-    SDL_free(painter->shaders[0].vertices);
-    SDL_free(painter->shaders[1].vertices);
-    SDL_free(painter->shaders[2].vertices);
-    SDL_free(painter->shaders[0].indices);
-    SDL_free(painter->shaders[1].indices);
-    SDL_free(painter->shaders[2].indices);
+    for (Uint32 i=0; i<painter->num_shaders; i++) {
+        SDL_free(painter->shaders[i].vertices);
+        SDL_free(painter->shaders[i].indices);
+    }
 
     return SDL_TRUE;
 }
