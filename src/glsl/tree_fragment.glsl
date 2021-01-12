@@ -46,6 +46,8 @@ vec4 getCol() {
     float light = dot(inLightDirection, normalize(inNormal));
     light = (light+1.0) / 2.0;
     col = mix(shadow, col, light);
+    if (col.a < 0.3)
+        col.a = 0.0;
     return col;
 }
 

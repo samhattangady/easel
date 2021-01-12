@@ -413,6 +413,7 @@ SDL_bool _painter_shadow_map_init(EsPainter* painter) {
 
     painter->shadow_map_shader->shader_name = "Shadow Map Shader";
     painter->shadow_map_shader->vertex_shader = "data/spirv/base_vertex.spv";
+    painter->shadow_map_shader->shadow_map_vertex_shader = "data/spirv/base_vertex.spv";
     painter->shadow_map_shader->fragment_shader = "data/spirv/base_fragment.spv";
     painter->shadow_map_shader->shadow_map_fragment_shader = "data/spirv/base_fragment.spv";
     /*
@@ -1445,6 +1446,8 @@ void _painter_shader_cleanup(EsPainter* painter, ShaderData* shader) {
         vkFreeMemory(painter->device, shader->vertex_staging_buffer_memory, NULL);
     if (shader->vertex_shader_module)
         vkDestroyShaderModule(painter->device, shader->vertex_shader_module, NULL);
+    if (shader->shadow_map_vertex_shader_module)
+        vkDestroyShaderModule(painter->device, shader->shadow_map_vertex_shader_module, NULL);
     if (shader->fragment_shader_module)
         vkDestroyShaderModule(painter->device, shader->fragment_shader_module, NULL);
     if (shader->shadow_map_fragment_shader_module)
@@ -1961,6 +1964,27 @@ SDL_bool _painter_load_shaders(EsPainter* painter, ShaderData* shader) {
         painter_cleanup(painter);
         return SDL_FALSE;
     }
+    Uint32* shadow_map_vertex_spirv;
+    Sint64 shadow_map_vertex_shader_length;
+    shadow_map_vertex_shader_length = painter_read_shader_file(shader->shadow_map_vertex_shader, &shadow_map_vertex_spirv);
+    if (shadow_map_vertex_shader_length < 0) {
+        SDL_Log(shader->shader_name);
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not sm read vertex shader.");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
+    VkShaderModuleCreateInfo shadow_map_vertex_shader_module_create_info;
+    shadow_map_vertex_shader_module_create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    shadow_map_vertex_shader_module_create_info.pNext = NULL;
+    shadow_map_vertex_shader_module_create_info.flags = 0;
+    shadow_map_vertex_shader_module_create_info.codeSize = shadow_map_vertex_shader_length;
+    shadow_map_vertex_shader_module_create_info.pCode = shadow_map_vertex_spirv;
+    result = vkCreateShaderModule(painter->device, &shadow_map_vertex_shader_module_create_info, NULL, &shader->shadow_map_vertex_shader_module);
+    if (result != VK_SUCCESS) {
+        warehouse_error_popup("Error in Vulkan Setup.", "Could not create sm vertex shader module.");
+        painter_cleanup(painter);
+        return SDL_FALSE;
+    }
     Uint32* fragment_spirv;
     Sint64 fragment_shader_length;
     fragment_shader_length = painter_read_shader_file(shader->fragment_shader, &fragment_spirv);
@@ -2097,7 +2121,7 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     vertex_shader_stage_create_info.pNext = NULL;
     vertex_shader_stage_create_info.flags = 0;
     vertex_shader_stage_create_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertex_shader_stage_create_info.module = shader->vertex_shader_module;
+    vertex_shader_stage_create_info.module = shader->shadow_map_vertex_shader_module;
     vertex_shader_stage_create_info.pName = "main";
     vertex_shader_stage_create_info.pSpecializationInfo = NULL;
     VkPipelineShaderStageCreateInfo fragment_shader_stage_create_info;
@@ -2247,6 +2271,7 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
     rasterization_state_create_info.depthBiasConstantFactor = 4.0f;
     rasterization_state_create_info.depthBiasClamp = 0.0f;
     rasterization_state_create_info.depthBiasSlopeFactor = 1.5f;
+    vertex_shader_stage_create_info.module = shader->vertex_shader_module;
     fragment_shader_stage_create_info.module = shader->fragment_shader_module;
     shader_stages[1] = fragment_shader_stage_create_info;
     graphics_pipeline_create_info.pStages = shader_stages;
