@@ -5,15 +5,21 @@
 
 SDL_bool world_init(EsWorld* w) {
     w->running = SDL_TRUE;
-    w->position = build_vec3(0.0f, 8.0f, 35.0f);
-    w->target = build_vec3(0.0f, 4.0f, 0.0f);
+    w->player_transform.position = build_vec3(0.0f, 3.0f, 35.0f);
+    w->player_transform.facing = build_vec3(0.0f, 0.0f, -1.0f);
+    w->player_transform.up = build_vec3(0.0f, 1.0f, 0.0f);
+    w->position = build_vec3(0.0f, 0.0f, 0.0f);
+    w->target = build_vec3(0.0f, 0.0f, 0.0f);
     w->up_axis = build_vec3(0.0f, 1.0f, 0.0f);
     w->controls.up_down = SDL_FALSE;
     w->controls.down_down = SDL_FALSE;
     w->controls.left_down = SDL_FALSE;
     w->controls.right_down = SDL_FALSE;
+    w->controls.q_down = SDL_FALSE;
+    w->controls.e_down = SDL_FALSE;
     w->tree_geom = geom_init_geometry_size(300000, 700000, 2, 300000, 0);
     w->refresh_tree = SDL_FALSE;
+    w->refresh_shaders = SDL_FALSE;
     w->mouse.l_down = SDL_FALSE;
     w->mouse.r_down = SDL_FALSE;
     w->mouse.l_pressed = SDL_FALSE;
@@ -32,10 +38,8 @@ SDL_bool world_init(EsWorld* w) {
 }
 
 SDL_bool world_update(EsWorld* w, Uint32 timestep) {
-    vec3 target_y = build_vec3(w->target.x, 0.0f, w->target.z);
-    vec3 position_y = build_vec3(w->position.x, 0.0f, w->position.z);
-    vec3 forward = vec3_normalize(vec3_sub(target_y, position_y));
-    vec3 right = rotate_about_origin_yaxis(forward, -(float)M_PI/2.0f);
+    vec3 forward = vec3_normalize(w->player_transform.facing);
+    vec3 right = vec3_normalize(vec3_cross(forward, w->player_transform.up));
     vec3 movement = build_vec3(0.0f, 0.0f, 0.0f);
     if (w->controls.up_down)
         movement = vec3_add(movement, vec3_scale(forward, MOVE_SPEED));
@@ -45,14 +49,17 @@ SDL_bool world_update(EsWorld* w, Uint32 timestep) {
         movement = vec3_add(movement, vec3_scale(right, MOVE_SPEED));
     if (w->controls.left_down)
         movement = vec3_add(movement, vec3_scale(right, -MOVE_SPEED));
+    if (w->controls.q_down)
+        w->player_transform.up = rotate_about_origin_axis(w->up_axis, -0.005, w->player_transform.facing);
+    if (w->controls.e_down)
+        w->player_transform.up = rotate_about_origin_axis(w->up_axis, 0.005, w->player_transform.facing);
     // TODO (03 Dec 2020 sam): Normalize when moving forward and side.
     movement = vec3_scale(movement, timestep/1000.0f);
-    w->position = vec3_add(w->position, movement);
-    w->target = vec3_add(w->target, movement);
+    w->player_transform.position = vec3_add(w->player_transform.position, movement);
     float x_angle = -w->mouse.moved_x / 768.0f;
-    w->target = rotate_about_anchor_axis(w->target, w->position, x_angle, w->up_axis);
     float y_angle = w->mouse.moved_y / 1024.0f;
-    w->target = rotate_about_anchor_axis(w->target, w->position, y_angle, vec3_cross(w->up_axis, vec3_sub(w->target, w->position)));
+    w->player_transform.facing = rotate_about_origin_axis(w->player_transform.facing, x_angle, w->player_transform.up);
+    w->player_transform.facing = rotate_about_origin_axis(w->player_transform.facing, y_angle, vec3_cross(w->player_transform.up, w->player_transform.facing));
     if (w->mouse.l_pressed) {
         // create tree at x, z where the target is
         float x = w->target.x;
@@ -64,6 +71,9 @@ SDL_bool world_update(EsWorld* w, Uint32 timestep) {
         geom_simplify_geometry(&w->tree_geom);
         w->refresh_tree = SDL_TRUE;
     }
+    w->position = vec3_add(w->player_transform.position, vec3_scale(w->player_transform.facing, -5.0));
+    w->target = w->player_transform.position;
+    w->up_axis = w->player_transform.up;
     return SDL_TRUE;
 }
 
@@ -110,6 +120,10 @@ SDL_bool world_process_input_event(EsWorld* w, SDL_Event e) {
             w->controls.left_down = SDL_TRUE;
         if (key == SDLK_d)
             w->controls.right_down = SDL_TRUE;
+        if (key == SDLK_q)
+            w->controls.q_down = SDL_TRUE;
+        if (key == SDLK_e)
+            w->controls.e_down = SDL_TRUE;
     }
     if (e.type == SDL_KEYUP) {
         SDL_Keycode key = e.key.keysym.sym;
@@ -121,6 +135,12 @@ SDL_bool world_process_input_event(EsWorld* w, SDL_Event e) {
             w->controls.left_down = SDL_FALSE;
         if (key == SDLK_d)
             w->controls.right_down = SDL_FALSE;
+        if (key == SDLK_q)
+            w->controls.q_down = SDL_FALSE;
+        if (key == SDLK_e)
+            w->controls.e_down = SDL_FALSE;
+        if (key == SDLK_r)
+            w->refresh_shaders = SDL_TRUE;
     }
     return SDL_TRUE;
 }

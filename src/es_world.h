@@ -35,17 +35,27 @@ typedef struct {
     SDL_bool down_down;
     SDL_bool left_down;
     SDL_bool right_down;
+    SDL_bool q_down;
+    SDL_bool e_down;
 } ControlsData;
+
+typedef struct {
+    vec3 position;
+    vec3 facing;
+    vec3 up;
+} PlayerTransform;
 
 typedef struct {
     SDL_bool running;
     vec3 position;
     vec3 target;
     vec3 up_axis;
+    PlayerTransform player_transform;
     MouseData mouse;
     ControlsData controls;
     EsGeometry tree_geom;
     SDL_bool refresh_tree;
+    SDL_bool refresh_shaders;
 } EsWorld;
 
 extern SDL_bool world_init(EsWorld* w);

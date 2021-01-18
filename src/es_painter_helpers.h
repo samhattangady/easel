@@ -31,6 +31,7 @@ extern SDL_bool _painter_create_descriptor_sets(EsPainter* painter, ShaderData* 
 extern SDL_bool _painter_init_shader_data(EsPainter* painter, ShaderData* shader, ShaderType type);
 extern SDL_bool _painter_load_buffer_from_geom(EsPainter* painter, EsGeometry* geom, ShaderData* shader);
 extern SDL_bool _painter_shadow_map_init(EsPainter* painter);
+extern SDL_bool _painter_refresh_shaders(EsPainter* painter);
 SDL_bool _painter_create_swapchain(EsPainter* painter);
 
 SDL_bool _painter_load_buffer_from_geom(EsPainter* painter, EsGeometry* geom, ShaderData* shader) {
@@ -2028,6 +2029,7 @@ SDL_bool _painter_load_shaders(EsPainter* painter, ShaderData* shader) {
     }
     SDL_free(shadow_map_fragment_spirv);
     SDL_free(fragment_spirv);
+    SDL_free(shadow_map_vertex_spirv);
     SDL_free(vertex_spirv);
     return SDL_TRUE;
 }
@@ -2052,7 +2054,7 @@ SDL_bool _painter_create_descriptor_set_layout(EsPainter* painter, ShaderData* s
     shadow_map_layout_binding.descriptorCount = 1;
     shadow_map_layout_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     shadow_map_layout_binding.pImmutableSamplers = NULL;
-    VkDescriptorSetLayoutBinding* bindings = (VkDescriptorSetLayoutBinding*) SDL_malloc(2*sizeof(VkDescriptorSetLayoutBinding));
+    VkDescriptorSetLayoutBinding* bindings = (VkDescriptorSetLayoutBinding*) SDL_malloc(3*sizeof(VkDescriptorSetLayoutBinding));
     bindings[0] = ubo_layout_binding;
     bindings[1] = sampler_layout_binding;
     bindings[2] = shadow_map_layout_binding;
@@ -2289,9 +2291,9 @@ SDL_bool _painter_create_pipeline(EsPainter* painter, ShaderData* shader) {
 
 SDL_bool _painter_init_shader_data(EsPainter* painter, ShaderData* shader, ShaderType type) {
     SDL_bool sdl_result;
-    sdl_result = _painter_load_shaders(painter, shader);
-    if (!sdl_result) return SDL_FALSE;
     sdl_result = _painter_create_descriptor_set_layout(painter, shader);
+    if (!sdl_result) return SDL_FALSE;
+    sdl_result = _painter_load_shaders(painter, shader);
     if (!sdl_result) return SDL_FALSE;
     sdl_result = _painter_create_pipeline(painter, shader);
     if (!sdl_result) return SDL_FALSE;
@@ -2332,5 +2334,52 @@ SDL_bool _painter_init_shader_data(EsPainter* painter, ShaderData* shader, Shade
     if (!sdl_result) return _painter_cleanup_error(painter, "Could not copy vertices to buffer.", shader->shader_name);
     sdl_result = _painter_load_buffer_via_staging(painter, shader->indices, &shader->index_staging_buffer_memory, &shader->index_staging_buffer, &shader->index_buffer, shader->index_staging_buffer_size);
     if (!sdl_result) return _painter_cleanup_error(painter, "Could not copy indices to buffer.", shader->shader_name);
+    return SDL_TRUE;
+}
+
+SDL_bool _painter_refresh_shaders(EsPainter* painter) {
+    // TODO (14 Jan 2021 sam): Mark this functionality to only work in debug mode.
+    SDL_bool sdl_result;
+    ShaderData* shaders[16]; 
+    // TODO (16 Jan 2021 sam): Move the executable paths to variables.
+    system("splay.bat");
+    system("src\\compile.bat");
+    vkQueueWaitIdle(painter->presentation_queue);
+    vkDeviceWaitIdle(painter->device);
+    for (Uint32 i=0; i<painter->num_shaders; i++)
+        shaders[i] = &painter->shaders[i];
+    shaders[painter->num_shaders+0] = painter->ui_shader;
+    shaders[painter->num_shaders+1] = painter->skybox_shader;
+    shaders[painter->num_shaders+2] = painter->shadow_map_shader;
+    for (Uint32 i=0; i<painter->num_shaders+3; i++) {
+        ShaderData* shader = shaders[i];
+        SDL_Log("refreshing %s", shader->shader_name);
+        if (shader->vertex_shader_module)
+            vkDestroyShaderModule(painter->device, shader->vertex_shader_module, NULL);
+        if (shader->shadow_map_vertex_shader_module)
+            vkDestroyShaderModule(painter->device, shader->shadow_map_vertex_shader_module, NULL);
+        if (shader->fragment_shader_module)
+            vkDestroyShaderModule(painter->device, shader->fragment_shader_module, NULL);
+        if (shader->shadow_map_fragment_shader_module)
+            vkDestroyShaderModule(painter->device, shader->shadow_map_fragment_shader_module, NULL);
+        if (shader->pipeline)
+            vkDestroyPipeline(painter->device, shader->pipeline, NULL);
+        if (shader->shadow_map_pipeline)
+            vkDestroyPipeline(painter->device, shader->shadow_map_pipeline, NULL);
+        if (shader->pipeline_layout)
+            vkDestroyPipelineLayout(painter->device, shader->pipeline_layout, NULL);
+        sdl_result = _painter_load_shaders(painter, shader);
+        if (!sdl_result) return SDL_FALSE;
+        sdl_result = _painter_create_pipeline(painter, shader);
+        if (!sdl_result) return SDL_FALSE;
+    }
+    if (painter->shadow_map_command_buffers)
+        vkFreeCommandBuffers(painter->device, painter->command_pool, painter->swapchain_image_count, painter->shadow_map_command_buffers);
+    if (painter->command_buffers)
+        vkFreeCommandBuffers(painter->device, painter->command_pool, painter->swapchain_image_count, painter->command_buffers);
+    sdl_result = _painter_create_commandbuffers(painter);
+    if (!sdl_result) return _painter_custom_error("Setup Error", "Could not create commandbuffers");
+    sdl_result = _painter_fill_command_buffers(painter);
+    if (!sdl_result) return _painter_custom_error("Setup Error", "Could not fill commandbuffers");
     return SDL_TRUE;
 }

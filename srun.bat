@@ -1,1 +1,1 @@
-sbuild && splay
+sbuild && splay && src\compile

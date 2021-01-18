@@ -29,7 +29,7 @@ typedef struct {
     vec3 camera_position;
     float time;
     vec3 light_direction;
-    float padding;
+    float padding0;
     vec2 window_size;
     int state;
 } UniformBufferObject;
@@ -42,6 +42,7 @@ typedef struct {
     const char* shadow_map_fragment_shader;
     const char* texture_filepath;
     EsVertex* vertices;
+    vec3* original_positions;
     Uint32* indices;
     Uint32 num_vertices;
     Uint32 num_indices;
@@ -62,7 +63,6 @@ typedef struct {
     VkDeviceMemory texture_image_memory;
     VkImageView texture_image_view;
     VkSampler texture_sampler;
-    VkDescriptorSetLayout descriptor_set_layout;
     VkShaderModule vertex_shader_module;
     VkShaderModule shadow_map_vertex_shader_module;
     VkShaderModule fragment_shader_module;
@@ -70,6 +70,7 @@ typedef struct {
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline;
     VkPipeline shadow_map_pipeline;
+    VkDescriptorSetLayout descriptor_set_layout;
     VkDescriptorPool descriptor_pool;
     VkDescriptorPool shadow_map_descriptor_pool;
     VkDescriptorSet* descriptor_sets;

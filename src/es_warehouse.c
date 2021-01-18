@@ -339,10 +339,10 @@ mat4 perspective_projection(float angle, float aspect_ratio, float near, float f
     float n = near;
     float f = far;
     return build_mat4(
-        n/r, 0.0f,   0.0f, 0.0f,
-        0.0f,   -n/t, 0.0f, 0.0f,
-        0.0f,   0.0f,   -((f+n)/(f-n)), -1.0f,
-        0.0f,   0.0f,  -((2.0f*f*n)/(f-n)), 0.0f
+        n/r,    0.0f,   0.0f,                0.0f,
+        0.0f,   -n/t,   0.0f,                0.0f,
+        0.0f,   0.0f,   -((f+n)/(f-n)),     -1.0f,
+        0.0f,   0.0f,   -((2.0f*f*n)/(f-n)), 0.0f
     );
 }
 
@@ -352,10 +352,10 @@ mat4 parallel_projection(float half_width, float aspect_ratio, float near, float
     float n = near;
     float f = far;
     return build_mat4(
-        1.0f/r, 0.0f, 0.0f, 0.0f,
-        0.0f, -1.0f/t, 0.0f, 0.0f,
-        0.0f, 0.0f, -2.0f/(f-n), -((f+n)/(f-n)),
-        0.0f, 0.0f, 0.0f, 1.0f        
+        1.0f/r,  0.0f,    0.0f,        0.0f,
+        0.0f,   -1.0f/t,  0.0f,        0.0f,
+        0.0f,    0.0f,   -2.0f/(f-n), -(f+n)/(f-n),
+        0.0f,    0.0f,    0.0f,        1.0f        
     );
     
 }

@@ -18,12 +18,12 @@
 #define GRASS_MODEL_TEXTURE_PATH "data/img/grass4.png"
 #define GRASS_RADIUS 10.0f
 #define SKYBOX_MODEL_PATH "data/obj/skybox.obj"
-#define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skybox/front.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skybox/back.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH2 "data/img/skybox/top.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skybox/bottom.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skybox/left.jpg"
-#define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skybox/right.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skybox/front0.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skybox/back0.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH2 "data/img/skybox/top0.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skybox/bottom0.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skybox/left0.jpg"
+#define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skybox/right0.jpg"
 #define TREE_INSTANCES 1
 #define TREE_MODEL_TEXTURE_PATH "data/img/tree.png"
 #define PLANE_MODEL_PATH "data/obj/plane.obj"
@@ -32,10 +32,11 @@
 #define GROUND_NUM_VERTICES_SIDE 30
 #define SHADOW_PASS_SIZE 2048
 
-#include "es_painter_helpers.h"
-
 SDL_bool _painter_create_swapchain(EsPainter* painter);
 SDL_bool _painter_load_data(EsPainter* painter);
+SDL_bool _painter_fill_command_buffers(EsPainter* painter);
+
+#include "es_painter_helpers.h"
 
 SDL_bool _painter_load_data(EsPainter* painter) {
     tinyobj_attrib_t attrib;
@@ -75,8 +76,8 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     ground_shader.shadow_map_fragment_shader = "data/spirv/base_sm_fragment.spv";
     ground_shader.texture_filepath = GROUND_MODEL_TEXTURE_PATH;
     plane_shader.shader_name = "Plane Shader";
-    plane_shader.vertex_shader = "data/spirv/base_vertex.spv";
-    plane_shader.shadow_map_vertex_shader = "data/spirv/base_sm_vertex.spv";
+    plane_shader.vertex_shader = "data/spirv/plane_vertex.spv";
+    plane_shader.shadow_map_vertex_shader = "data/spirv/plane_sm_vertex.spv";
     plane_shader.fragment_shader = "data/spirv/base_fragment.spv";
     plane_shader.shadow_map_fragment_shader = "data/spirv/base_sm_fragment.spv";
     plane_shader.texture_filepath = PLANE_MODEL_TEXUTRE_PATH;
@@ -139,7 +140,7 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         for (Uint32 j=0; j<GRASS_NUM_VERTICES; j++) {
             EsVertex vert = grass_shader.vertices[j];
             vert.pos.x += x;
-            vert.pos.y += y;
+            vert.pos.y += y + 0.3f;
             vert.pos.z += z;        
             grass_shader.vertices[i*GRASS_NUM_VERTICES + j] = vert;
         }
@@ -212,7 +213,6 @@ SDL_bool _painter_load_data(EsPainter* painter) {
             z -= GRASS_RADIUS*1.5f;
             Uint32 index = i*(GROUND_NUM_VERTICES_SIDE+1) + j;
             float y = 1.0f * stb_perlin_noise3(x/10.0f, 0, z/10.0f, 0, 0, 0);
-            y -= 0.3f;
             ground_shader.vertices[index].pos = build_vec3(x, y, z);
             ground_shader.vertices[index].color = build_vec3(0, 0, 0);
             ground_shader.vertices[index].tex = build_vec2(tex_x, tex_y);
@@ -251,9 +251,10 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         return SDL_FALSE;
     }
     plane_shader.num_vertices = attrib.num_vertices;
-    plane_shader.vertices = (EsVertex*) SDL_malloc(painter->skybox_shader->num_vertices * sizeof(EsVertex));
+    plane_shader.vertices = (EsVertex*) SDL_malloc(plane_shader.num_vertices * sizeof(EsVertex));
+    plane_shader.original_positions = (vec3*) SDL_malloc(plane_shader.num_vertices * sizeof(vec3));
     plane_shader.num_indices = attrib.num_faces;
-    plane_shader.indices = (Uint32*) SDL_malloc(painter->skybox_shader->num_indices * sizeof(Uint32));
+    plane_shader.indices = (Uint32*) SDL_malloc(plane_shader.num_indices * sizeof(Uint32));
     if (num_shapes != 1) {
         warehouse_error_popup("Error in Setup.", "Currently only support obj with 1 shape");
         painter_cleanup(painter);
@@ -263,11 +264,12 @@ SDL_bool _painter_load_data(EsPainter* painter) {
         EsVertex vert;
         vert.pos.x = attrib.vertices[i*3 + 0];
         vert.pos.z = attrib.vertices[i*3 + 1];
-        vert.pos.y = 5.0f + attrib.vertices[i*3 + 2];
+        vert.pos.y = -attrib.vertices[i*3 + 2];
         vert.color.x = 0.0f;
         vert.color.y = 0.0f;
         vert.color.z = 0.0f;
         plane_shader.vertices[i] = vert;
+        plane_shader.original_positions[i] = vert.pos;
     }
     for (Uint32 i=0; i<attrib.num_faces; i++) {
         tinyobj_vertex_index_t face = attrib.faces[i];
@@ -308,11 +310,6 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     painter->uniform_buffer_object.window_size = build_vec2(1024.0f, 768.0f);
     painter->camera_fov = 45.0f;
     painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 200.0f);
-    painter->uniform_buffer_object.light_direction = vec3_normalize(build_vec3(1.0, 1.0, 1.0));
-    vec3 light_position = vec3_sub(vec3_origin(), vec3_scale(painter->uniform_buffer_object.light_direction, -20.0f));
-    mat4 light_projection = parallel_projection(1.0f, (1024.0f/768.0f), 0.1f, 51.0f);
-    mat4 light_view = look_at(light_position, vec3_origin(), build_vec3(0.0f, 1.0f, 0.0f));
-    painter->uniform_buffer_object.light_proj = mat4_mat4_multiply(light_view, light_projection);
 
     return SDL_TRUE;
 }
@@ -323,10 +320,10 @@ SDL_bool painter_initialise(EsPainter* painter) {
     sdl_result = _painter_initialise_sdl_window(painter, "Easel");
     if (!sdl_result) return SDL_FALSE;
     painter->num_shaders = 4;
-    painter->skybox_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
-    painter->ui_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
-    painter->shadow_map_shader = (ShaderData*) SDL_malloc(1 * sizeof(ShaderData));
-    painter->shaders = (ShaderData*) SDL_malloc(painter->num_shaders * sizeof(ShaderData));
+    painter->skybox_shader = (ShaderData*) SDL_calloc(1, sizeof(ShaderData));
+    painter->ui_shader = (ShaderData*) SDL_calloc(1, sizeof(ShaderData));
+    painter->shadow_map_shader = (ShaderData*) SDL_calloc(1, sizeof(ShaderData));
+    painter->shaders = (ShaderData*) SDL_calloc(painter->num_shaders, sizeof(ShaderData));
     sdl_result = _painter_load_data(painter);
     if (!sdl_result) return SDL_FALSE;
     sdl_result = _painter_init_instance(painter);
@@ -342,6 +339,7 @@ SDL_bool painter_initialise(EsPainter* painter) {
     painter->buffer_resized = SDL_FALSE;
 
     for (Uint32 i=0; i<painter->num_shaders; i++) {
+        if (i==3)  continue;  // we don't want to free the plane_vertex vertices
         SDL_free(painter->shaders[i].vertices);
         SDL_free(painter->shaders[i].indices);
     }
@@ -361,23 +359,13 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     sdl_result = _painter_shadow_map_init(painter);
     if (!sdl_result) return SDL_FALSE;
 
+    SDL_Log("initting shader_data");
     for (Uint32 i=0; i<painter->num_shaders; i++) {
         sdl_result = _painter_init_shader_data(painter, &painter->shaders[i], MODEL_SHADER);
-        if (!sdl_result) return SDL_FALSE;
+        if (!sdl_result) return _painter_custom_error("Setup Error", "Could not init shader data");
     }
     sdl_result = _painter_init_shader_data(painter, painter->ui_shader, UI_SHADER);
     if (!sdl_result) return SDL_FALSE;
-    void* ui_data;
-    result = vkMapMemory(painter->device, painter->ui_shader->index_staging_buffer_memory, 0, painter->ui_shader->index_staging_buffer_size, 0, &ui_data);
-    if (result != VK_SUCCESS) {
-        warehouse_error_popup("Error in Rendering.", "Could not map ui indices memory");
-        painter_cleanup(painter);
-        return SDL_FALSE;
-    }
-    SDL_memcpy(ui_data, painter->ui_shader->indices, (size_t) painter->ui_shader->index_staging_buffer_size);
-    vkUnmapMemory(painter->device, painter->ui_shader->index_staging_buffer_memory);
-    sdl_result = _painter_load_buffer_via_staging(painter, painter->ui_shader->indices, &painter->ui_shader->index_staging_buffer_memory, &painter->ui_shader->index_staging_buffer, &painter->ui_shader->index_buffer, painter->ui_shader->index_staging_buffer_size);
-
     sdl_result = _painter_init_shader_data(painter, painter->skybox_shader, SKYBOX_SHADER);
     if (!sdl_result) return SDL_FALSE;
     sdl_result = _painter_init_shader_data(painter, painter->shadow_map_shader, SHADOW_MAP_SHADER);
@@ -391,6 +379,8 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
         if (!sdl_result) return SDL_FALSE;
     }
 
+
+    SDL_Log("creating descriptor sets");
     for (Uint32 i=0; i<painter->num_shaders; i++) {
         sdl_result = _painter_create_descriptor_sets(painter, &painter->shaders[i]);
         if (!sdl_result) return _painter_custom_error("Setup Error", "Could not create descriptor sets");
@@ -402,9 +392,17 @@ SDL_bool _painter_create_swapchain(EsPainter* painter) {
     sdl_result = _painter_create_descriptor_sets(painter, painter->shadow_map_shader);
     if (!sdl_result) return _painter_custom_error("Setup Error", "Could not create descriptor sets");
 
+    SDL_Log("creating and filling command buffer");
     sdl_result = _painter_create_commandbuffers(painter);
     if (!sdl_result) return _painter_custom_error("Setup Error", "Could not create commandbuffers");
+    sdl_result = _painter_fill_command_buffers(painter);
+    if (!sdl_result) return _painter_custom_error("Setup Error", "Could not fill commandbuffers");
+    return SDL_TRUE;
+}
 
+SDL_bool _painter_fill_command_buffers(EsPainter* painter) {
+    VkResult result;
+    // SDL_bool sdl_result;
 
     VkClearColorValue color_value0 = { 1.0f, 0.0f, 0.0f, 1.0f };
     VkClearColorValue color_value1 = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -516,6 +514,12 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
         sdl_result = _painter_load_buffer_from_geom(painter, &painter->world->tree_geom, &painter->shaders[0]);
     }
 
+    if (painter->world->refresh_shaders) {
+        SDL_Log("refreshing shaders");
+        sdl_result = _painter_refresh_shaders(painter);
+        painter->world->refresh_shaders = SDL_FALSE;
+    }
+
     vkWaitForFences(painter->device, 1, &painter->in_flight_fences[painter->frame_index], VK_TRUE, UINT64_MAX);
     result = vkAcquireNextImageKHR(painter->device, painter->swapchain, UINT64_MAX, painter->image_available_semaphores[painter->frame_index], VK_NULL_HANDLE, &image_index);
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || painter->buffer_resized) {
@@ -536,11 +540,42 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     painter->uniform_buffer_object.camera_position = painter->camera_position;
     painter->uniform_buffer_object.view = look_at(painter->camera_position, target, painter->world->up_axis);
     painter->uniform_buffer_object.state = 0;  // shadow map
+    painter->uniform_buffer_object.light_direction = vec3_normalize(build_vec3(1.0, 1.0, 1.0));
+    vec3 light_position = vec3_sub(painter->camera_position, vec3_scale(painter->uniform_buffer_object.light_direction, -50.0f));
+    mat4 light_projection = parallel_projection(1.0f, (1024.0f/768.0f), 0.1f, 51.0f);
+    mat4 light_view = look_at(light_position, painter->camera_position, build_vec3(0.0f, 1.0f, 0.0f));
+    painter->uniform_buffer_object.light_proj = mat4_mat4_multiply(light_view, light_projection);
 
     void* uniform_data;
     result = vkMapMemory(painter->device, painter->uniform_buffers_memory[image_index], 0, painter->uniform_buffer_size, 0, &uniform_data);
     if (result != VK_SUCCESS) return _painter_custom_error("Rendering Error", "Could not map uniform memory");
     SDL_memcpy(uniform_data, &painter->uniform_buffer_object, (size_t) painter->uniform_buffer_size);
+
+    // TODO (18 Jan 2021 sam): I would ideally like to move this code to es_world. Don't think
+    // it should be here.
+    vec3 plane_position = painter->world->player_transform.position;
+    vec3 plane_zaxis = painter->world->player_transform.facing;
+    vec3 plane_xaxis = vec3_normalize(vec3_cross(painter->world->player_transform.up, plane_zaxis));
+    vec3 plane_yaxis = vec3_normalize(vec3_cross(plane_zaxis, plane_xaxis));
+    mat4 plane_transform = build_mat4(
+            plane_xaxis.x, plane_yaxis.x, plane_zaxis.x, 0.0f,
+            plane_xaxis.y, plane_yaxis.y, plane_zaxis.y, 0.0f,
+            plane_xaxis.z, plane_yaxis.z, plane_zaxis.z, 0.0f,
+            0.0f,          0.0f,          0.0f,          1.0f
+    );
+    for (Uint32 i=0; i<painter->shaders[3].num_vertices; i++) {
+        vec3 og_pos = painter->shaders[3].original_positions[i];
+        vec4 pos = build_vec4(og_pos.x, og_pos.y, og_pos.z, 1.0f);
+        painter->shaders[3].vertices[i].pos = vec3_add(vec3_add(plane_position, vec3_scale(plane_yaxis, -0.5f)), vec3_from_vec4(mat4_vec4_multiply(plane_transform, pos)));
+    }
+    void* plane_vertices;
+    result = vkMapMemory(painter->device, painter->shaders[3].vertex_staging_buffer_memory, 0, painter->shaders[3].vertex_staging_buffer_size, 0, &plane_vertices);
+    if (result != VK_SUCCESS) return _painter_custom_error("Rendering Error", "Could not map plane vertices");
+    SDL_memcpy(plane_vertices, painter->shaders[3].vertices, (size_t) painter->shaders[3].vertex_staging_buffer_size);
+    vkUnmapMemory(painter->device, painter->shaders[3].vertex_staging_buffer_memory);
+    // TODO (23 Dec 2020 sam): Use single buffer for plane vertices. Don't use staging. It is not efficient if
+    // we have to update the data every frame.
+    sdl_result = _painter_load_buffer_via_staging(painter, painter->shaders[3].vertices, &painter->shaders[3].vertex_staging_buffer_memory, &painter->shaders[3].vertex_staging_buffer, &painter->shaders[3].vertex_buffer, painter->shaders[3].vertex_staging_buffer_size);
 
     void* ui_data;
     // TODO (16 Dec 2020 sam): Only map this memory if there is some text to be shown.

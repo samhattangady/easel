@@ -55,6 +55,8 @@ int main(int argc, char** argv) {
             return -2;
         result = world_flush_inputs(&world);
         result = ui_flush(&ui);
+        // TODO (16 Jan 2020 sam): Figure out better way to do this.
+        SDL_Delay(3);
         frame_end_time = SDL_GetTicks();
     }
 

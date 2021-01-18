@@ -5,12 +5,12 @@
     float x_pixel = 1.0 / 2048.0;
     float y_pixel = 1.0 / 2048.0;
     vec2 texCoord;
-    for (int i=-1; i<=1; i++) {
-        for (int j=-1; j<=1; j++) {
+    for (int i=-2; i<=2; i++) {
+        for (int j=-2; j<=2; j++) {
             texCoord = shadowTexCoord + vec2(x_pixel*i, y_pixel*j);
             shadow += get_shadow(texCoord);
         }
     }
-    shadow /= 9.0;
+    shadow /= 25.0;
     col = mix(col, shadowCol, shadow);
 

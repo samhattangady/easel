@@ -2,6 +2,7 @@
 
 #define SHADER_DIRECTORY "src/glsl"
 #define SHADER_TEMP_DIRECTORY "shaders"
+#define NUM_SHADERS 4
 
 typedef struct {
     char* filepath;
@@ -43,13 +44,15 @@ int _read_file(FileContents* file) {
     result = SDL_RWseek(f, 0, RW_SEEK_SET);
     if (result < 0)
         return -3;
-    file->contents = (char*) SDL_malloc(file_size * sizeof(char));
+    file->contents = (char*) SDL_malloc(file_size+1 * sizeof(char));
     read_size = SDL_RWread(f, file->contents, sizeof(char), file_size);
     if ((Sint64) read_size != file_size) {
+        SDL_Log("Read size was not equal to file size");
         SDL_free(file->contents);
         free(file->contents);
         return -4;
     }
+    file->contents[file_size] = '\0';
     SDL_RWclose(f);
     return 0;
 }
@@ -63,6 +66,7 @@ int _load_shader_code(ShaderCode* shader) {
     int result;
     result = _read_file(&shader->vertex);
     if (result != 0)  return _error_message_and_return(-1);
+    // SDL_Log("%s - %s", shader->prefix, shader->vertex.contents);
     result = _read_file(&shader->fragment);
     if (result != 0)  return _error_message_and_return(-1);
     return 0;
@@ -157,7 +161,7 @@ int main(int argc, char** argv) {
     if (result != 0)  return _error_message_and_return(-1);
     result = _read_file(&common.fragment_sm_main);
     if (result != 0)  return _error_message_and_return(-1);
-    ShaderCode shaders[3];
+    ShaderCode shaders[NUM_SHADERS];
     shaders[0].prefix = "tree";
     shaders[0].vertex.filepath = "tree_vertex.glsl";
     shaders[0].fragment.filepath = "tree_fragment.glsl";
@@ -167,7 +171,11 @@ int main(int argc, char** argv) {
     shaders[2].prefix = "base";
     shaders[2].vertex.filepath = "vertex.glsl";
     shaders[2].fragment.filepath = "fragment.glsl";
-    for (Uint32 i=0; i<3; i++) {
+    shaders[3].prefix = "plane";
+    shaders[3].vertex.filepath = "plane_vertex.glsl";
+    shaders[3].fragment.filepath = "fragment.glsl";
+    for (Uint32 i=0; i<NUM_SHADERS; i++) {
+        SDL_Log("Generating shader %i", i);
         result = _load_shader_code(&shaders[i]);
         if (result != 0)  return _error_message_and_return(-2);
         result = _compile_shaders(&shaders[i], &common);
@@ -177,12 +185,14 @@ int main(int argc, char** argv) {
     skybox.prefix = "skybox";
     skybox.vertex.filepath = "skybox_vertex.glsl";
     skybox.fragment.filepath = "skybox_fragment.glsl";
+    SDL_Log("Generating skybox shader");
     result = _copy_shaders(&skybox);
     if (result != 0)  return _error_message_and_return(-1);
     ShaderCode ui;
     ui.prefix = "ui";
     ui.vertex.filepath = "ui_vertex.glsl";
     ui.fragment.filepath = "ui_fragment.glsl";
+    SDL_Log("Generating ui shader");
     result = _copy_shaders(&ui);
     if (result != 0)  return _error_message_and_return(-1);
     SDL_Log("shader files generated. yay");
