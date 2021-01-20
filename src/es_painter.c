@@ -274,8 +274,8 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     for (Uint32 i=0; i<attrib.num_faces; i++) {
         tinyobj_vertex_index_t face = attrib.faces[i];
         plane_shader.indices[i] = face.v_idx;
-        // painter->skybox_shader->vertices[face.v_idx].tex.x = attrib.texcoords[face.vt_idx*2 + 0];
-        // painter->skybox_shader->vertices[face.v_idx].tex.y = 1.0f - attrib.texcoords[face.vt_idx*2 + 1];
+        plane_shader.vertices[face.v_idx].tex.x = 0.0f;
+        plane_shader.vertices[face.v_idx].tex.y = 0.0f;
     }
     tinyobj_attrib_free(&attrib);
     tinyobj_shapes_free(shapes, num_shapes);
