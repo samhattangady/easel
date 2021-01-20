@@ -12,6 +12,11 @@
 #include "es_geometrygen.h"
 #include "es_trees.h"
 
+typedef enum {
+    MODE_AIM,
+    MODE_FLY,
+    MODE_NUM_COUNT,
+} PlayerMode;
 
 typedef struct {
     SDL_bool l_down;
@@ -43,14 +48,25 @@ typedef struct {
     vec3 position;
     vec3 facing;
     vec3 up;
+    vec3 world_down;
 } PlayerTransform;
+
+typedef struct {
+    vec3 velocity;
+    vec3 lift;
+    vec3 weight;
+    vec3 thrust;
+    vec3 drag;
+} PlayerForces;
 
 typedef struct {
     SDL_bool running;
     vec3 position;
     vec3 target;
     vec3 up_axis;
+    PlayerMode mode;
     PlayerTransform player_transform;
+    PlayerForces player_forces;
     MouseData mouse;
     ControlsData controls;
     EsGeometry tree_geom;
