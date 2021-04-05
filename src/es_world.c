@@ -4,11 +4,12 @@
 #define MOVE_SPEED 6.0f
 #define THROW_MAGNITUDE 20.0f
 #define DRAG_COEFFICIENT 0.05f
-#define ROLL_SPEED M_PI * 2.0f
-#define PITCH_SPEED M_PI * 2.0f
+#define ROLL_SPEED 3.1415926f * 16.0f
+#define PITCH_SPEED 3.1415926f * 4.0f
 
 SDL_bool _world_aim_update(EsWorld* w, Uint32 timestep);
 SDL_bool _world_fly_update(EsWorld* w, Uint32 timestep);
+float _world_get_lift(vec3 facing, vec3 velocity);
 
 SDL_bool world_init(EsWorld* w) {
     w->running = SDL_TRUE;
@@ -64,9 +65,9 @@ SDL_bool _world_aim_update(EsWorld* w, Uint32 timestep) {
     if (w->controls.left_down)
         movement = vec3_add(movement, vec3_scale(right, -MOVE_SPEED));
     if (w->controls.q_down)
-        w->player_transform.up = rotate_about_origin_axis(w->up_axis, -0.005, w->player_transform.facing);
+        w->player_transform.up = rotate_about_origin_axis(w->up_axis, -0.005f, w->player_transform.facing);
     if (w->controls.e_down)
-        w->player_transform.up = rotate_about_origin_axis(w->up_axis, 0.005, w->player_transform.facing);
+        w->player_transform.up = rotate_about_origin_axis(w->up_axis, 0.005f, w->player_transform.facing);
     if (w->mouse.l_pressed) {
         w->mode = MODE_FLY;
         w->player_forces.velocity = vec3_scale(w->player_transform.facing, THROW_MAGNITUDE);
@@ -85,17 +86,20 @@ SDL_bool _world_fly_update(EsWorld* w, Uint32 timestep) {
     // Apply velocity at given position
     w->player_transform.position = vec3_add(w->player_transform.position, vec3_scale(w->player_forces.velocity, timestep/1000.0f));
     // Calculate forces at given orientation
+    w->player_forces.lift = vec3_scale(w->player_transform.up, _world_get_lift(w->player_transform.facing, w->player_forces.velocity));
     // Update velocity for next frame
     w->player_forces.velocity = vec3_add(w->player_forces.velocity, vec3_scale(w->player_forces.weight, timestep/1000.0f));
     w->player_forces.velocity = vec3_add(w->player_forces.velocity, vec3_scale(w->player_forces.lift, timestep/1000.0f));
+    float bias = 0.5f;
+    w->player_forces.velocity = vec3_add(vec3_scale(w->player_forces.velocity, bias), vec3_scale(w->player_transform.facing, (1.0f-bias)*vec3_magnitude(w->player_forces.velocity)));
     if (w->controls.up_down)
         w->player_transform.facing = rotate_about_origin_axis(w->player_transform.facing, PITCH_SPEED/timestep/1000.0f, vec3_cross(w->player_transform.up, w->player_transform.facing));
     if (w->controls.down_down)
         w->player_transform.facing = rotate_about_origin_axis(w->player_transform.facing, -PITCH_SPEED/timestep/1000.0f, vec3_cross(w->player_transform.up, w->player_transform.facing));
     if (w->controls.right_down)
-        w->player_transform.up = rotate_about_origin_axis(w->player_transform.up, 0.005f, w->player_transform.facing);
+        w->player_transform.up = rotate_about_origin_axis(w->player_transform.up, ROLL_SPEED/timestep/1000.0f, w->player_transform.facing);
     if (w->controls.left_down)
-        w->player_transform.up = rotate_about_origin_axis(w->player_transform.up, -0.005f, w->player_transform.facing);
+        w->player_transform.up = rotate_about_origin_axis(w->player_transform.up, -ROLL_SPEED/timestep/1000.0f, w->player_transform.facing);
     // float x_angle = (w->mouse.moved_x / 768.0f) * M_PI;
     // float y_angle = (-w->mouse.moved_y / 1024.0f) * M_PI;
     // w->player_transform.up = rotate_about_origin_axis(w->up_axis, x_angle, w->player_transform.facing);
@@ -115,20 +119,9 @@ SDL_bool world_update(EsWorld* w, Uint32 timestep) {
         _world_aim_update(w, timestep);
     else if (w->mode == MODE_FLY)
         _world_fly_update(w, timestep);
-    w->position = vec3_add(w->player_transform.position, vec3_scale(w->player_transform.facing, -5.0));
+    w->position = vec3_add(vec3_add(w->player_transform.position, vec3_scale(w->player_transform.up, 0.5f)), vec3_scale(w->player_transform.facing, -5.0));
     w->target = vec3_add(w->player_transform.position, vec3_scale(w->player_transform.facing, 10.0f));
     w->up_axis = w->player_transform.up;
-    if (w->mouse.r_pressed) {
-        // create tree at x, z where the target is
-        float x = w->target.x;
-        float z = w->target.z;
-        float y = 1.0f * stb_perlin_noise3(x/10.0f, 0, z/10.0f, 0, 0, 0);
-        vec3 pos = build_vec3(x, y, z);
-        EsTree tree = trees_gen_test();
-        trees_add_to_geom_at_pos(&tree, &w->tree_geom, pos);
-        geom_simplify_geometry(&w->tree_geom);
-        w->refresh_tree = SDL_TRUE;
-    }
     return SDL_TRUE;
 }
 
@@ -209,4 +202,19 @@ SDL_bool world_flush_inputs(EsWorld* w) {
     w->mouse.moved_y = 0.0f;
     w->refresh_tree = SDL_FALSE;
     return SDL_TRUE;
+}
+
+float _world_get_lift(vec3 facing, vec3 velocity) {
+    // We need to get the lift based on the angle between the direction the plane
+    // is facing, and the direction of its veolcity.
+    // Sample Graph: http://www.aerospaceweb.org/question/airfoils/q0150b.shtml
+    // https://github.com/brihernandez/SimpleWings
+    // To start off, we will use a simple sin(2*x) as an approximation.
+    // Note that sin2x = 2*sinx*cosx
+    velocity = vec3_normalize(velocity);
+    facing = vec3_normalize(facing);
+    float cosa = vec3_dot(facing, velocity);
+    float sina = vec3_length(vec3_cross(facing, velocity));
+    float lift = 5.0f * cosa * sina;
+    return lift;
 }

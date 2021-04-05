@@ -33,7 +33,10 @@ vec4 getCol() {
         texCoord = rotate(texCoord, distance(texCoord, vec2(0.0)) * sin(time/2.7) * noise(inPos.xz) * 3.1415/8.0f);
     }
     vec4 col = texture(texSampler, texCoord);
-    if (col.a < 0.5)
+    // TODO (20 Jan 2021 sam): This needs to be based on distance from camera.
+    // The closer it is, the higher the cutoff needs to be. Should scale from
+    // ~0.5 to ~0.1.
+    if (col.a < 0.1)
         discard;
     float leaf_tint = 1.0;
     if (texCoord.x > 0) {

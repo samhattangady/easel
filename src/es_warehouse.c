@@ -181,6 +181,7 @@ float vec3_dot(vec3 a, vec3 b) {
 }
 
 vec3 vec3_normalize(vec3 a) {
+    // TODO (21 Jan 2021 sam): See if we can use fast inverse square method here.
     vec3 result;
     float magnitude = vec3_magnitude(a);
     result.x = a.x/magnitude;

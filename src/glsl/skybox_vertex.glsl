@@ -25,7 +25,7 @@ layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec3 fragTexCoord;  // This is different for skybox
 
 void main() {
-    vec3 pos = inPosition;
+    vec3 pos = inPosition + ubo.camera_position;
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(pos, 1.0);
     fragColor = inColor;
     fragTexCoord = inPosition;

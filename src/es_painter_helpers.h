@@ -38,10 +38,10 @@ SDL_bool _painter_load_buffer_from_geom(EsPainter* painter, EsGeometry* geom, Sh
     SDL_bool sdl_result;
     // TODO (09 Dec 2020 sam): We should be reallocating memory and buffers if there is not enought
     // memory available.
-    if (geom->num_vertices > 100000 || geom->num_faces*3 > 1000000) {
-        SDL_Log("Not enough memory. Sorry");
-        return SDL_FALSE;
-    }
+    // if (geom->num_vertices > 100000 || geom->num_faces*3 > 1000000) {
+    //     SDL_Log("Not enough memory. Sorry");
+    //     return SDL_FALSE;
+    // }
     shader->num_vertices = geom->num_vertices;
     shader->vertices = (EsVertex*) SDL_malloc(shader->num_vertices * sizeof(EsVertex));
     shader->num_indices = geom->num_faces * 3;

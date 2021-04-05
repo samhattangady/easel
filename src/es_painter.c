@@ -12,11 +12,11 @@
 
 #include <stdlib.h>
 
-#define GRASS_INSTANCES 2005
+#define GRASS_INSTANCES 20005
 #define GRASS_NUM_VERTICES 4
 #define GRASS_MODEL_PATH "data/obj/grass3.obj"
 #define GRASS_MODEL_TEXTURE_PATH "data/img/grass4.png"
-#define GRASS_RADIUS 10.0f
+#define GRASS_RADIUS 100.0f
 #define SKYBOX_MODEL_PATH "data/obj/skybox.obj"
 #define SKYBOX_MODEL_TEXTURE_PATH4 "data/img/skybox/front0.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH5 "data/img/skybox/back0.jpg"
@@ -24,12 +24,12 @@
 #define SKYBOX_MODEL_TEXTURE_PATH3 "data/img/skybox/bottom0.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH1 "data/img/skybox/left0.jpg"
 #define SKYBOX_MODEL_TEXTURE_PATH0 "data/img/skybox/right0.jpg"
-#define TREE_INSTANCES 1
+#define TREE_INSTANCES 30
 #define TREE_MODEL_TEXTURE_PATH "data/img/tree.png"
 #define PLANE_MODEL_PATH "data/obj/plane.obj"
 #define PLANE_MODEL_TEXUTRE_PATH "data/img/tree.png"
 #define GROUND_MODEL_TEXTURE_PATH "data/img/ground.png"
-#define GROUND_NUM_VERTICES_SIDE 30
+#define GROUND_NUM_VERTICES_SIDE 300
 #define SHADOW_PASS_SIZE 2048
 
 SDL_bool _painter_create_swapchain(EsPainter* painter);
@@ -194,9 +194,28 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     painter->ui_shader->indices = painter->ui->indices;
     SDL_Log("UI shader num vertices = %i", painter->ui_shader->num_vertices);
 
-    tree_shader.num_vertices = 100000;
+
+    Uint32 timer_start = SDL_GetTicks();
+    // TODO (20 Jan 2021 sam): This process is really slow. See how it can be speeded up
+    // Specifically, it seems like the add_to_geom is the slow function. tree gen is faster.
+    // Total takes ~1.7 seconds. Tree gen takes ~0.2 seconds.
+    for (Uint32 i=0; i<TREE_INSTANCES; i++) {
+        float x = rand_negpos() * GRASS_RADIUS;
+        float z = rand_negpos() * GRASS_RADIUS;
+        float y = 1.0f * stb_perlin_noise3(x/10.0f, 0, z/10.0f, 0, 0, 0);
+        vec3 pos = build_vec3(x, y, z);
+        EsTree tree = trees_gen_test();
+        trees_add_to_geom_at_pos(&tree, &painter->world->tree_geom, pos);
+    }
+    SDL_Log("add to geom %i ticks", SDL_GetTicks()-timer_start);
+    timer_start = SDL_GetTicks();
+    geom_simplify_geometry(&painter->world->tree_geom);
+    painter->world->refresh_tree = SDL_TRUE;
+    SDL_Log("simplify geom took %i ticks", SDL_GetTicks()-timer_start);
+
+    tree_shader.num_vertices = painter->world->tree_geom.num_vertices;
     tree_shader.vertices = (EsVertex*) SDL_malloc(tree_shader.num_vertices * sizeof(EsVertex));
-    tree_shader.num_indices = 1000000;
+    tree_shader.num_indices = painter->world->tree_geom.num_faces * 3;
     tree_shader.indices = (Uint32*) SDL_malloc(tree_shader.num_indices * sizeof(Uint32));
 
     ground_shader.num_vertices = (GROUND_NUM_VERTICES_SIDE+1) * (GROUND_NUM_VERTICES_SIDE+1);
@@ -300,7 +319,6 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     painter->shadow_map_shader->indices[4] = 2;
     painter->shadow_map_shader->indices[5] = 3;
 
-
     painter->shaders[0] = tree_shader;
     painter->shaders[1] = ground_shader;
     painter->shaders[2] = grass_shader;
@@ -309,7 +327,7 @@ SDL_bool _painter_load_data(EsPainter* painter) {
     painter->uniform_buffer_object.model = identity_mat4();
     painter->uniform_buffer_object.window_size = build_vec2(1024.0f, 768.0f);
     painter->camera_fov = 45.0f;
-    painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 200.0f);
+    painter->uniform_buffer_object.proj = perspective_projection(deg_to_rad(painter->camera_fov), (1024.0f/768.0f), 0.1f, 5000.0f);
 
     return SDL_TRUE;
 }
@@ -348,7 +366,6 @@ SDL_bool painter_initialise(EsPainter* painter) {
 }
 
 SDL_bool _painter_create_swapchain(EsPainter* painter) {
-    VkResult result;
     SDL_bool sdl_result;
 
     SDL_Log("swapchain renderpass init");
@@ -566,7 +583,7 @@ SDL_bool painter_paint_frame(EsPainter* painter) {
     for (Uint32 i=0; i<painter->shaders[3].num_vertices; i++) {
         vec3 og_pos = painter->shaders[3].original_positions[i];
         vec4 pos = build_vec4(og_pos.x, og_pos.y, og_pos.z, 1.0f);
-        painter->shaders[3].vertices[i].pos = vec3_add(vec3_add(plane_position, vec3_scale(plane_yaxis, -0.5f)), vec3_from_vec4(mat4_vec4_multiply(plane_transform, pos)));
+        painter->shaders[3].vertices[i].pos = vec3_add(plane_position, vec3_from_vec4(mat4_vec4_multiply(plane_transform, pos)));
     }
     void* plane_vertices;
     result = vkMapMemory(painter->device, painter->shaders[3].vertex_staging_buffer_memory, 0, painter->shaders[3].vertex_staging_buffer_size, 0, &plane_vertices);
